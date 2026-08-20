@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Sparkles, 
   Brain, 
@@ -9,12 +9,43 @@ import {
   Clock, 
   Target, 
   ShieldCheck, 
-  ArrowRight,
-  BarChart3,
-  CheckCircle2,
-  Lock
+  ArrowRight, 
+  BarChart3, 
+  CheckCircle2, 
+  Lock,
+  AlertCircle,
+  X
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
+
+function AuthErrorBanner({ onDismiss }: { onDismiss: () => void }) {
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+
+  if (!error && !errorDescription) return null;
+
+  const displayMessage = errorDescription || (
+    error === "auth_failed" 
+      ? "Google authentication failed. Please verify your Supabase Redirect URLs and Google OAuth configuration."
+      : error === "no_auth_code"
+      ? "No authorization code returned from Google."
+      : decodeURIComponent(error)
+  );
+
+  return (
+    <div className="mt-4 p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 max-w-lg mx-auto text-left animate-slide-up">
+      <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+      <div className="flex-1">
+        <p className="font-semibold text-rose-200">Authentication Notice</p>
+        <p className="text-[11px] mt-0.5 text-rose-300/90 leading-relaxed">{displayMessage}</p>
+      </div>
+      <button onClick={onDismiss} className="text-rose-400 hover:text-white p-0.5">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,7 +54,7 @@ export default function LoginPage() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // If already authenticated, redirect to dashboard
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAuthenticated) {
       router.push("/");
     }
@@ -35,8 +66,8 @@ export default function LoginPage() {
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      console.warn("Direct Supabase Google Auth error (fallback to demo):", err);
-      setAuthError("Google OAuth is redirecting or configuring. You can also explore instantly with Guest Mode below.");
+      console.warn("Direct Supabase Google Auth error:", err);
+      setAuthError(err.message || "Unable to initiate Google OAuth. Check your Supabase configuration.");
       setIsLoading(false);
     }
   };
@@ -75,7 +106,7 @@ export default function LoginPage() {
         </button>
       </header>
 
-      {/* Hero Section (Fitted in initial viewport) */}
+      {/* Hero Section */}
       <main className="relative z-10 w-full max-w-5xl mx-auto px-6 py-8 sm:py-12 flex flex-col items-center text-center">
         {/* Eyebrow badge */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-elevated/90 border border-focus/30 text-focus text-xs font-medium mb-6 shadow-sm">
@@ -88,7 +119,7 @@ export default function LoginPage() {
           Stop confusing raw clock time with <span className="text-transparent bg-clip-text bg-gradient-to-r from-focus via-emerald-300 to-focus-light">real focused study.</span>
         </h1>
 
-        {/* Subtext (< 20 words as per design taste rule) */}
+        {/* Subtext */}
         <p className="text-base sm:text-lg text-slate-400 max-w-xl mt-4 leading-relaxed">
           Log in-between stray thoughts in 1-tap, isolate net deep work, and receive automated AI debriefs.
         </p>
@@ -101,7 +132,6 @@ export default function LoginPage() {
             disabled={isLoading}
             className="w-full py-3.5 px-6 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm transition-all shadow-xl shadow-white/10 active:scale-[0.98] flex items-center justify-center gap-3 border border-slate-200"
           >
-            {/* Google G Logo SVG */}
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
@@ -120,7 +150,7 @@ export default function LoginPage() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
               />
             </svg>
-            <span>{isLoading ? "Signing in..." : "Continue with Google"}</span>
+            <span>{isLoading ? "Connecting to Google..." : "Continue with Google"}</span>
           </button>
 
           {/* Instant Demo CTA */}
@@ -132,6 +162,10 @@ export default function LoginPage() {
             <ArrowRight className="w-4 h-4 text-focus" />
           </button>
         </div>
+
+        <Suspense fallback={null}>
+          <AuthErrorBanner onDismiss={() => router.replace("/login")} />
+        </Suspense>
 
         {authError && (
           <p className="mt-3 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg max-w-md">
