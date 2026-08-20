@@ -31,6 +31,7 @@ interface StudyContextType {
   resumeSession: () => void;
   addThought: (title: string, category: ThoughtCategory, approxDurationMinutes: number, notes?: string) => void;
   endSession: (sessionNotes?: string) => Promise<AIDebrief | null>;
+  abandonSession: () => void;
   createSubject: (
     nameOrObj: string | { name: string; color?: string; icon?: string; target_weekly_hours?: number },
     color?: string,
