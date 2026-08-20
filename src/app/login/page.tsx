@@ -30,7 +30,9 @@ function AuthErrorBanner({ onDismiss }: { onDismiss: () => void }) {
       ? "Google authentication failed. Please verify your Supabase Redirect URLs and Google OAuth configuration."
       : error === "no_auth_code"
       ? "No authorization code returned from Google."
-      : decodeURIComponent(error)
+      : error 
+      ? decodeURIComponent(error)
+      : "An authentication error occurred. Please try again."
   );
 
   return (
