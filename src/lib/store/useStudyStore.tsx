@@ -51,6 +51,7 @@ const LOCAL_STORAGE_KEY_USER = "studyflow_user";
 const LOCAL_STORAGE_KEY_SUBJECTS = "studyflow_subjects";
 const LOCAL_STORAGE_KEY_SESSIONS = "studyflow_sessions";
 const LOCAL_STORAGE_KEY_ACTIVE = "studyflow_active_session";
+const LOCAL_STORAGE_KEY_TIMER = "studyflow_active_timer";
 
 export function StudyProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -72,6 +73,53 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = createClient();
 
+  // Helper to recover active session & timer from localStorage with exact elapsed calculation
+  const restoreActiveSessionFromStorage = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const savedActive = localStorage.getItem(LOCAL_STORAGE_KEY_ACTIVE);
+      const savedTimer = localStorage.getItem(LOCAL_STORAGE_KEY_TIMER);
+
+      if (savedActive) {
+        const active: StudySession = JSON.parse(savedActive);
+        setActiveSession(active);
+
+        if (savedTimer) {
+          const parsedTimer = JSON.parse(savedTimer);
+          let calculatedElapsed = parsedTimer.elapsedSeconds || 0;
+
+          // If timer was running when page refreshed, add elapsed seconds since last timestamp
+          if (parsedTimer.isRunning && parsedTimer.lastUpdatedTimestamp) {
+            const secondsSinceLastTick = Math.max(
+              0,
+              Math.floor((Date.now() - parsedTimer.lastUpdatedTimestamp) / 1000)
+            );
+            calculatedElapsed += secondsSinceLastTick;
+          }
+
+          setActiveTimer({
+            type: parsedTimer.type || active.session_type || "stopwatch",
+            targetMinutes: parsedTimer.targetMinutes || 25,
+            elapsedSeconds: calculatedElapsed,
+            isRunning: parsedTimer.isRunning ?? true,
+            startTime: parsedTimer.startTime || new Date(active.start_time).getTime(),
+          });
+        } else {
+          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(active.start_time).getTime()) / 1000));
+          setActiveTimer({
+            type: active.session_type || "stopwatch",
+            targetMinutes: 25,
+            elapsedSeconds: elapsed,
+            isRunning: true,
+            startTime: new Date(active.start_time).getTime(),
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Error restoring active session from storage:", e);
+    }
+  };
+
   // Initialize Auth & Data
   useEffect(() => {
     async function initAuth() {
@@ -90,30 +138,20 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           setUser(uProfile);
           setIsAuthenticated(true);
           await loadSupabaseData(session.user.id);
+          // Restore active session for authenticated user
+          restoreActiveSessionFromStorage();
         } else {
           // Check local storage for demo / guest session
           const savedUser = localStorage.getItem(LOCAL_STORAGE_KEY_USER);
           const savedSubjects = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
           const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
-          const savedActive = localStorage.getItem(LOCAL_STORAGE_KEY_ACTIVE);
 
           if (savedUser) {
             setUser(JSON.parse(savedUser));
             setIsAuthenticated(true);
             setSubjects(savedSubjects ? JSON.parse(savedSubjects) : INITIAL_SUBJECTS);
             setSessions(savedSessions ? JSON.parse(savedSessions) : INITIAL_SESSIONS);
-            if (savedActive) {
-              const active = JSON.parse(savedActive);
-              setActiveSession(active);
-              const elapsed = Math.floor((Date.now() - new Date(active.start_time).getTime()) / 1000);
-              setActiveTimer({
-                type: active.session_type || "stopwatch",
-                targetMinutes: 25,
-                elapsedSeconds: Math.max(0, elapsed),
-                isRunning: true,
-                startTime: new Date(active.start_time).getTime(),
-              });
-            }
+            restoreActiveSessionFromStorage();
           }
         }
       } catch (err) {
@@ -139,14 +177,23 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         setUser(uProfile);
         setIsAuthenticated(true);
         await loadSupabaseData(session.user.id);
+        restoreActiveSessionFromStorage();
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsAuthenticated(false);
         setSubjects([]);
         setSessions([]);
         setActiveSession(null);
+        setActiveTimer({
+          type: "stopwatch",
+          targetMinutes: 25,
+          elapsedSeconds: 0,
+          isRunning: false,
+          startTime: null,
+        });
         localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
         localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
+        localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
       }
     });
 
@@ -188,7 +235,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Sync to local storage for offline resilience
+  // Sync subjects & sessions to local storage
   useEffect(() => {
     if (subjects.length > 0) {
       localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
@@ -201,14 +248,40 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sessions]);
 
+  // Sync active session and timer state continuously to localStorage
+  useEffect(() => {
+    if (activeSession) {
+      localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE, JSON.stringify(activeSession));
+      localStorage.setItem(
+        LOCAL_STORAGE_KEY_TIMER,
+        JSON.stringify({
+          ...activeTimer,
+          lastUpdatedTimestamp: Date.now(),
+        })
+      );
+    }
+  }, [activeSession, activeTimer]);
+
   // Timer Tick Engine
   useEffect(() => {
     if (activeTimer.isRunning) {
       timerIntervalRef.current = setInterval(() => {
-        setActiveTimer((prev) => ({
-          ...prev,
-          elapsedSeconds: prev.elapsedSeconds + 1,
-        }));
+        setActiveTimer((prev) => {
+          const updated = {
+            ...prev,
+            elapsedSeconds: prev.elapsedSeconds + 1,
+          };
+          if (activeSession) {
+            localStorage.setItem(
+              LOCAL_STORAGE_KEY_TIMER,
+              JSON.stringify({
+                ...updated,
+                lastUpdatedTimestamp: Date.now(),
+              })
+            );
+          }
+          return updated;
+        });
       }, 1000);
     } else if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
@@ -217,7 +290,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [activeTimer.isRunning]);
+  }, [activeTimer.isRunning, activeSession]);
 
   // Compute live net focus time & focus ratio
   const totalThoughtSeconds = (activeSession?.thoughts || []).reduce(
@@ -292,6 +365,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify([]));
     localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify([]));
     document.cookie = "studyflow_demo_user=true; path=/; max-age=604800";
+    restoreActiveSessionFromStorage();
   };
 
   const signOut = async () => {
@@ -308,6 +382,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     });
     localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
     document.cookie = "studyflow_demo_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };
 
@@ -326,6 +401,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       target_weekly_hours: 10,
       created_at: new Date().toISOString(),
     };
+
     const newSession: StudySession = {
       id: `sess-${Date.now()}`,
       user_id: user?.id || "user",
@@ -343,24 +419,53 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       subject,
     };
 
-    setActiveSession(newSession);
-    setActiveTimer({
+    const initialTimerState: ActiveTimerState = {
       type,
       targetMinutes,
       elapsedSeconds: 0,
       isRunning: true,
       startTime: Date.now(),
-    });
+    };
+
+    setActiveSession(newSession);
+    setActiveTimer(initialTimerState);
 
     localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE, JSON.stringify(newSession));
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY_TIMER,
+      JSON.stringify({
+        ...initialTimerState,
+        lastUpdatedTimestamp: Date.now(),
+      })
+    );
   };
 
   const pauseSession = () => {
-    setActiveTimer((prev) => ({ ...prev, isRunning: false }));
+    setActiveTimer((prev) => {
+      const updated = { ...prev, isRunning: false };
+      localStorage.setItem(
+        LOCAL_STORAGE_KEY_TIMER,
+        JSON.stringify({
+          ...updated,
+          lastUpdatedTimestamp: Date.now(),
+        })
+      );
+      return updated;
+    });
   };
 
   const resumeSession = () => {
-    setActiveTimer((prev) => ({ ...prev, isRunning: true }));
+    setActiveTimer((prev) => {
+      const updated = { ...prev, isRunning: true };
+      localStorage.setItem(
+        LOCAL_STORAGE_KEY_TIMER,
+        JSON.stringify({
+          ...updated,
+          lastUpdatedTimestamp: Date.now(),
+        })
+      );
+      return updated;
+    });
   };
 
   const addThought = (
@@ -374,7 +479,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     const newThought: Thought = {
       id: `th-${Date.now()}`,
       session_id: activeSession.id,
-      user_id: user?.id || "demo-user-id",
+      user_id: user?.id || "user",
       title: title.trim(),
       category,
       approx_duration_minutes: approxDurationMinutes,
@@ -469,9 +574,10 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       startTime: null,
     });
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
 
     // Save to Supabase if authenticated
-    if (user && !user.id.startsWith("demo-")) {
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         await supabase.from("study_sessions").insert({
           id: completedSession.id,
@@ -484,14 +590,15 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           net_focus_seconds: completedSession.net_focus_seconds,
           status: "completed",
           session_type: completedSession.session_type,
-          session_notes: sessionNotes,
-          focus_score: score,
-          ai_debrief: debrief,
+          focus_score: completedSession.focus_score,
+          ai_debrief: completedSession.ai_debrief,
         });
 
+        // Insert thoughts
         if (completedSession.thoughts && completedSession.thoughts.length > 0) {
           await supabase.from("thoughts").insert(
             completedSession.thoughts.map((t) => ({
+              id: t.id,
               session_id: completedSession.id,
               user_id: user.id,
               title: t.title,
@@ -520,6 +627,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       startTime: null,
     });
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
   };
 
   const createSubject = async (
@@ -568,7 +676,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
 
   const updateSubject = async (id: string, updates: Partial<Subject>) => {
     setSubjects((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
-    if (user && !user.id.startsWith("demo-")) {
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         await supabase.from("subjects").update(updates).eq("id", id);
       } catch (e) {
@@ -579,7 +687,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
 
   const deleteSubject = async (id: string) => {
     setSubjects((prev) => prev.filter((s) => s.id !== id));
-    if (user && !user.id.startsWith("demo-")) {
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         await supabase.from("subjects").delete().eq("id", id);
       } catch (e) {
