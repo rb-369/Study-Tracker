@@ -1,10 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType } from "@/types";
-import { INITIAL_PROFILE, INITIAL_SUBJECTS, INITIAL_SESSIONS } from "./seedData";
+import { INITIAL_SUBJECTS, INITIAL_SESSIONS } from "./seedData";
 import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
+import { generateUUID } from "@/lib/utils";
 
 interface ActiveTimerState {
   type: SessionType;
@@ -138,7 +139,6 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           setUser(uProfile);
           setIsAuthenticated(true);
           await loadSupabaseData(session.user.id);
-          // Restore active session for authenticated user
           restoreActiveSessionFromStorage();
         } else {
           // Check local storage for demo / guest session
@@ -192,6 +192,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           startTime: null,
         });
         localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
+        localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
+        localStorage.removeItem(LOCAL_STORAGE_KEY_SESSIONS);
         localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
         localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
       }
@@ -205,33 +207,77 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   // Fetch Cloud data from Supabase
   const loadSupabaseData = async (userId: string) => {
     try {
-      const { data: subjData } = await supabase
+      const { data: subjData, error: subjErr } = await supabase
         .from('subjects')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
-      if (subjData) {
-        setSubjects(subjData);
-      } else {
-        setSubjects([]);
+      if (subjErr) {
+        console.error("Error loading subjects from Supabase:", subjErr);
       }
 
-      const { data: sessData } = await supabase
+      if (subjData && subjData.length > 0) {
+        setSubjects(subjData);
+        localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjData));
+      } else {
+        // Check local storage backup
+        const savedSubjects = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
+        if (savedSubjects) {
+          const parsed = JSON.parse(savedSubjects);
+          if (parsed && parsed.length > 0) {
+            setSubjects(parsed);
+            // Sync local subjects to Supabase in background
+            for (const s of parsed) {
+              supabase.from('subjects').upsert({
+                id: s.id.length === 36 ? s.id : generateUUID(),
+                user_id: userId,
+                name: s.name,
+                color: s.color,
+                icon: s.icon,
+                target_weekly_hours: s.target_weekly_hours,
+              }).then();
+            }
+          } else {
+            setSubjects([]);
+          }
+        } else {
+          setSubjects([]);
+        }
+      }
+
+      const { data: sessData, error: sessErr } = await supabase
         .from('study_sessions')
         .select('*, thoughts(*), subject:subjects(*)')
         .eq('user_id', userId)
         .order('start_time', { ascending: false });
 
-      if (sessData) {
+      if (sessErr) {
+        console.error("Error loading sessions from Supabase:", sessErr);
+      }
+
+      if (sessData && sessData.length > 0) {
         setSessions(sessData);
+        localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(sessData));
       } else {
-        setSessions([]);
+        const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
+        if (savedSessions) {
+          const parsed = JSON.parse(savedSessions);
+          if (parsed && parsed.length > 0) {
+            setSessions(parsed);
+          } else {
+            setSessions([]);
+          }
+        } else {
+          setSessions([]);
+        }
       }
     } catch (e) {
       console.error("Error loading Supabase data:", e);
-      setSubjects([]);
-      setSessions([]);
+      const savedSubjects = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
+      if (savedSubjects) setSubjects(JSON.parse(savedSubjects));
+      const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
+      if (savedSessions) setSessions(JSON.parse(savedSessions));
     }
   };
 
@@ -381,6 +427,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       startTime: null,
     });
     localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_SESSIONS);
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
     localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
     document.cookie = "studyflow_demo_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
@@ -393,7 +441,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     targetMinutes: number = 25
   ) => {
     const subject = subjects.find((s) => s.id === subjectId) || {
-      id: subjectId || "general",
+      id: subjectId && subjectId.length === 36 ? subjectId : generateUUID(),
       user_id: user?.id || "user",
       name: "General Study",
       color: "#10b981",
@@ -403,7 +451,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     };
 
     const newSession: StudySession = {
-      id: `sess-${Date.now()}`,
+      id: generateUUID(),
       user_id: user?.id || "user",
       subject_id: subject.id,
       topic: topic.trim() || "Deep Study Block",
@@ -477,7 +525,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     if (!activeSession) return;
 
     const newThought: Thought = {
-      id: `th-${Date.now()}`,
+      id: generateUUID(),
       session_id: activeSession.id,
       user_id: user?.id || "user",
       title: title.trim(),
@@ -650,8 +698,10 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       finalName = nameOrObj;
     }
 
+    const subjectId = generateUUID();
+
     const newSubject: Subject = {
-      id: `sub-${Date.now()}`,
+      id: subjectId,
       user_id: user?.id || "user",
       name: finalName.trim(),
       color: finalColor,
@@ -660,14 +710,39 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
 
-    setSubjects((prev) => [...prev, newSubject]);
+    setSubjects((prev) => {
+      const updated = [...prev, newSubject];
+      localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(updated));
+      return updated;
+    });
 
     if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
-        const { data } = await supabase.from("subjects").insert(newSubject).select().single();
-        if (data) return data;
+        const { data, error } = await supabase
+          .from("subjects")
+          .insert({
+            id: subjectId,
+            user_id: user.id,
+            name: newSubject.name,
+            color: newSubject.color,
+            icon: newSubject.icon,
+            target_weekly_hours: newSubject.target_weekly_hours,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error("Supabase create subject error:", error);
+        } else if (data) {
+          setSubjects((prev) => {
+            const mapped = prev.map((s) => (s.id === subjectId ? data : s));
+            localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(mapped));
+            return mapped;
+          });
+          return data;
+        }
       } catch (e) {
-        console.error("Supabase create subject error:", e);
+        console.error("Supabase create subject exception:", e);
       }
     }
 
@@ -675,7 +750,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateSubject = async (id: string, updates: Partial<Subject>) => {
-    setSubjects((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    setSubjects((prev) => {
+      const updated = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(updated));
+      return updated;
+    });
+
     if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         await supabase.from("subjects").update(updates).eq("id", id);
@@ -686,7 +766,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteSubject = async (id: string) => {
-    setSubjects((prev) => prev.filter((s) => s.id !== id));
+    setSubjects((prev) => {
+      const updated = prev.filter((s) => s.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(updated));
+      return updated;
+    });
+
     if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         await supabase.from("subjects").delete().eq("id", id);
