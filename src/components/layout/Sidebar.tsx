@@ -38,8 +38,12 @@ export function Sidebar({ onOpenNewSession, onOpenNewSubject }: SidebarProps) {
       {/* Brand Header */}
       <div className="px-5 py-5 border-b border-zinc-800/80 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform duration-200">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
+          <div className="w-8 h-8 rounded-lg overflow-hidden border border-emerald-500/25 flex items-center justify-center bg-zinc-900 group-hover:scale-105 transition-transform duration-200 shadow-sm">
+            <img
+              src="/Study_flow_logo.png"
+              alt="StudyFlow Logo"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div>
             <div className="flex items-center gap-1.5">

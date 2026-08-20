@@ -46,8 +46,12 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 animate-spin">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
+          <div className="w-10 h-10 rounded-xl overflow-hidden border border-emerald-500/30 flex items-center justify-center bg-zinc-900 animate-pulse shadow-lg">
+            <img
+              src="/Study_flow_logo.png"
+              alt="StudyFlow Logo"
+              className="w-full h-full object-cover"
+            />
           </div>
           <p className="text-xs font-mono text-zinc-500">Loading StudyFlow...</p>
         </div>

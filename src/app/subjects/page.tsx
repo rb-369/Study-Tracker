@@ -22,8 +22,17 @@ export default function SubjectsPage() {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-focus border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl overflow-hidden border border-emerald-500/30 flex items-center justify-center bg-zinc-900 animate-pulse shadow-lg">
+            <img
+              src="/Study_flow_logo.png"
+              alt="StudyFlow Logo"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <p className="text-xs font-mono text-zinc-500">Loading Subjects...</p>
+        </div>
       </div>
     );
   }

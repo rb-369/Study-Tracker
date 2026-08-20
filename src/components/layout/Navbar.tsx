@@ -15,8 +15,12 @@ export function Navbar({ onOpenNewSession }: NavbarProps) {
   return (
     <header className="lg:hidden sticky top-0 z-40 w-full border-b border-zinc-800/80 bg-[#09090b]/90 backdrop-blur-md px-4 py-3 flex items-center justify-between">
       <Link href="/" className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="w-7 h-7 rounded-lg overflow-hidden border border-emerald-500/25 flex items-center justify-center bg-zinc-900 shadow-sm">
+          <img
+            src="/Study_flow_logo.png"
+            alt="StudyFlow Logo"
+            className="w-full h-full object-cover"
+          />
         </div>
         <span className="font-bold text-sm tracking-tight text-zinc-100">StudyFlow</span>
       </Link>
