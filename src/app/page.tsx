@@ -10,11 +10,10 @@ import {
   Clock, 
   Sparkles, 
   CheckCircle, 
-  ChevronRight, 
-  Calendar,
-  Layers,
+  Plus, 
+  BookOpen,
   ArrowRight,
-  BookOpen
+  TrendingUp
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -23,17 +22,18 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { LiveSessionTimer } from "@/components/session/LiveSessionTimer";
 import { SessionStartModal } from "@/components/session/SessionStartModal";
 import { SessionEndDebriefModal } from "@/components/session/SessionEndDebriefModal";
+import { SubjectManager } from "@/components/subjects/SubjectManager";
 import { computeAnalyticsSummary } from "@/lib/analytics/metrics";
 import { formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { StudySession } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects } = useStudyStore();
+  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, createSubject } = useStudyStore();
 
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
-  const [inspectedSession, setInspectedSession] = useState<StudySession | null>(null);
+  const [isNewSubjectModalOpen, setIsNewSubjectModalOpen] = useState(false);
 
   // Auth gate check
   React.useEffect(() => {
@@ -44,12 +44,12 @@ export default function DashboardPage() {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-focus/15 border border-focus/30 flex items-center justify-center text-focus animate-spin">
-            <Sparkles className="w-5 h-5 text-focus" />
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 animate-spin">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-xs font-mono text-slate-400">Loading your StudyFlow space...</p>
+          <p className="text-xs font-mono text-zinc-500">Loading StudyFlow...</p>
         </div>
       </div>
     );
@@ -57,7 +57,7 @@ export default function DashboardPage() {
 
   const summary = computeAnalyticsSummary(sessions);
 
-  // Calculate today's net minutes
+  // Calculate today's net minutes from completed sessions
   const todayStr = new Date().toISOString().split("T")[0];
   const todaySessions = sessions.filter(
     (s) => s.status === "completed" && s.start_time.startsWith(todayStr)
@@ -66,377 +66,313 @@ export default function DashboardPage() {
     (acc, s) => acc + Math.round(s.net_focus_seconds / 60),
     0
   );
-  const dailyTargetMinutes = user?.target_daily_minutes || 180;
+  const dailyTargetMinutes = user?.target_daily_minutes || 120;
   const todayProgressPercent = Math.min(100, Math.round((todayNetMinutes / dailyTargetMinutes) * 100));
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex">
       {/* Desktop Sidebar */}
-      <Sidebar onOpenNewSession={() => setIsStartModalOpen(true)} />
+      <Sidebar 
+        onOpenNewSession={() => setIsStartModalOpen(true)} 
+        onOpenNewSubject={() => setIsNewSubjectModalOpen(true)}
+      />
 
-      {/* Main Content Area */}
+      {/* Main Workspace */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-8">
         <Navbar onOpenNewSession={() => setIsStartModalOpen(true)} />
 
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-8">
-          {/* Welcome Banner */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6">
+          {/* Top Status Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-zinc-800/80">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-                <span>Welcome back, {user?.full_name?.split(" ")[0] || "Learner"}</span>
-                <span className="text-xl">✨</span>
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                Ready to track deep work and isolate your real net focus time?
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                  Focus Console
+                </h1>
+                <span className="text-xs text-zinc-500 font-mono">
+                  &bull; {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Audit real deep work time against raw clock time with 1-tap mind pings.
               </p>
             </div>
 
             {!activeSession && (
               <button
                 onClick={() => setIsStartModalOpen(true)}
-                className="px-5 py-3 rounded-2xl bg-gradient-to-r from-focus to-focus-dark hover:opacity-95 text-slate-950 text-xs sm:text-sm font-bold transition-all shadow-xl shadow-focus/25 flex items-center gap-2 active:scale-[0.98]"
+                className="px-4 py-2.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-2 shadow-sm"
               >
-                <Play className="w-4 h-4 fill-slate-950" />
-                <span>Start New Focus Block</span>
+                <Play className="w-3.5 h-3.5 fill-zinc-950" />
+                <span>Start Focus Session</span>
               </button>
             )}
           </div>
 
-          {/* ACTIVE STUDY SESSION (Hero Area if running) */}
-          {activeSession ? (
-            <LiveSessionTimer onEndSessionClick={() => setIsDebriefModalOpen(true)} />
-          ) : (
-            /* DAILY PROGRESS HERO CARD (If no session active) */
-            <div className="rounded-3xl glass-panel p-6 sm:p-7 border border-border/90 relative overflow-hidden">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                <div className="space-y-2 max-w-md">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-focus uppercase tracking-wider">
-                    <Flame className="w-4 h-4 text-focus" />
-                    <span>Today&apos;s Focus Target</span>
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                    {todayNetMinutes > 0
-                      ? `${formatMinutesToDisplay(todayNetMinutes)} of pure deep work logged today`
-                      : "No study sessions recorded yet today"}
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    Daily Goal: {formatMinutesToDisplay(dailyTargetMinutes)} ({todayProgressPercent}% reached)
-                  </p>
-                </div>
+          {/* Laptop / Desktop Grid Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Center Stage Focus Console (8 Columns on Desktop) */}
+            <div className="lg:col-span-8 space-y-6">
+              {activeSession ? (
+                <LiveSessionTimer onEndSessionClick={() => setIsDebriefModalOpen(true)} />
+              ) : (
+                /* Ready State Console */
+                <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-6 sm:p-8">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
+                    <div>
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-semibold">
+                        Ready to Focus
+                      </span>
+                      <h2 className="text-lg font-bold text-zinc-100 mt-0.5">
+                        No active timer running
+                      </h2>
+                      <p className="text-xs text-zinc-400 mt-1 max-w-md">
+                        Choose a subject and topic to start logging deep work. Stray thoughts will be captured in 1-tap.
+                      </p>
+                    </div>
 
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                  {/* Progress Bar & Quick Start */}
-                  <div className="flex-1 md:w-48 space-y-1.5">
-                    <div className="w-full h-3 rounded-full bg-surface-subtle overflow-hidden border border-border/80">
+                    <button
+                      onClick={() => setIsStartModalOpen(true)}
+                      className="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                    >
+                      <Play className="w-4 h-4 fill-zinc-950" />
+                      <span>Start Focus Block</span>
+                    </button>
+                  </div>
+
+                  {/* Daily Target Progress Bar */}
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="text-zinc-400 font-medium">Today&apos;s Focus Goal</span>
+                      <span className="font-mono text-zinc-200">
+                        {todayNetMinutes}m / {dailyTargetMinutes}m ({todayProgressPercent}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
                       <div
-                        className="h-full bg-focus rounded-full transition-all duration-500"
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
                         style={{ width: `${todayProgressPercent}%` }}
                       />
                     </div>
-                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                      <span>0m</span>
-                      <span>{dailyTargetMinutes}m target</span>
-                    </div>
                   </div>
 
+                  {/* 3 Core Metric Glance Cards */}
+                  <div className="grid grid-cols-3 gap-3 mt-6">
+                    <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-zinc-800/80">
+                      <span className="text-[10px] uppercase font-mono text-zinc-500">Today Focused</span>
+                      <div className="text-base sm:text-lg font-bold text-zinc-100 font-mono mt-0.5">
+                        {todayNetMinutes > 0 ? formatMinutesToDisplay(todayNetMinutes) : "0m"}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-zinc-800/80">
+                      <span className="text-[10px] uppercase font-mono text-zinc-500">All-Time Net</span>
+                      <div className="text-base sm:text-lg font-bold text-zinc-100 font-mono mt-0.5">
+                        {summary.totalNetFocusMinutes > 0 
+                          ? formatMinutesToDisplay(summary.totalNetFocusMinutes) 
+                          : "0m"}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-zinc-800/80">
+                      <span className="text-[10px] uppercase font-mono text-zinc-500">Focus Ratio</span>
+                      <div className="text-base sm:text-lg font-bold text-emerald-400 font-mono mt-0.5">
+                        {summary.completedSessionsCount > 0 
+                          ? `${Math.round(summary.averageFocusRatio * 100)}%` 
+                          : "100%"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Today's Completed Sessions Feed */}
+              <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-5 sm:p-6">
+                <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-bold text-zinc-100">Today&apos;s Flow Timeline</h3>
+                  </div>
+                  <span className="text-xs font-mono text-zinc-500">
+                    {todaySessions.length} completed
+                  </span>
+                </div>
+
+                {todaySessions.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <p className="text-xs text-zinc-400">
+                      No study sessions completed today yet.
+                    </p>
+                    <p className="text-[11px] text-zinc-600 mt-1">
+                      Start a focus block above to record your first deep work session.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mt-4">
+                    {todaySessions.map((s) => {
+                      const netMins = Math.round(s.net_focus_seconds / 60);
+                      const grossMins = Math.round(s.gross_duration_seconds / 60);
+                      const thoughtsCount = s.thoughts?.length || 0;
+                      return (
+                        <div
+                          key={s.id}
+                          className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 truncate">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: s.subject?.color || "#10b981" }}
+                            />
+                            <div className="truncate">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-zinc-200 truncate">
+                                  {s.topic}
+                                </span>
+                                <span className="text-[10px] text-zinc-500 font-mono">
+                                  {s.subject?.name}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2">
+                                <span>{netMins}m net focus</span>
+                                <span>&bull;</span>
+                                <span>{thoughtsCount} mind pings</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              {s.focus_score}/100
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Desktop Right Rail (4 Columns on Desktop) */}
+            <div className="lg:col-span-4 space-y-6">
+              {/* Enrolled Courses / Subject Targets */}
+              <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-5">
+                <div className="flex items-center justify-between pb-3.5 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                      Subject Targets
+                    </h3>
+                  </div>
                   <button
-                    onClick={() => setIsStartModalOpen(true)}
-                    className="p-3.5 rounded-2xl bg-focus hover:bg-focus-light text-slate-950 font-bold transition-all shadow-lg shadow-focus/20 active:scale-[0.98] flex items-center justify-center flex-shrink-0"
+                    onClick={() => setIsNewSubjectModalOpen(true)}
+                    className="text-[11px] text-emerald-400 hover:underline font-medium flex items-center gap-1"
                   >
-                    <Play className="w-5 h-5 fill-slate-950" />
+                    <Plus className="w-3 h-3" />
+                    <span>Add</span>
                   </button>
+                </div>
+
+                {subjects.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="text-xs text-zinc-400">No subjects configured</p>
+                    <button
+                      onClick={() => setIsNewSubjectModalOpen(true)}
+                      className="mt-2 text-xs font-medium text-emerald-400 hover:underline"
+                    >
+                      + Create first subject
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mt-3.5">
+                    {subjects.map((sub) => {
+                      const subSessions = sessions.filter(
+                        (s) => s.subject_id === sub.id && s.status === "completed"
+                      );
+                      const totalSubMins = subSessions.reduce(
+                        (acc, s) => acc + Math.round(s.net_focus_seconds / 60),
+                        0
+                      );
+                      const targetWeeklyMins = (sub.target_weekly_hours || 10) * 60;
+                      const progressPct = Math.min(100, Math.round((totalSubMins / targetWeeklyMins) * 100));
+
+                      return (
+                        <div key={sub.id} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 truncate">
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: sub.color || "#10b981" }}
+                              />
+                              <span className="font-medium text-zinc-300 truncate">
+                                {sub.name}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-mono text-zinc-400">
+                              {formatMinutesToDisplay(totalSubMins)} / {sub.target_weekly_hours}h
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{
+                                width: `${progressPct}%`,
+                                backgroundColor: sub.color || "#10b981",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Distraction Quick Audit Card */}
+              <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-5">
+                <div className="flex items-center gap-2 pb-3 border-b border-zinc-800/80">
+                  <Brain className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    Mind Ping Audit
+                  </h3>
+                </div>
+
+                <div className="mt-3.5 space-y-2">
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    StudyFlow automatically isolates stray thoughts so your focus statistics reflect genuine flow time.
+                  </p>
+                  <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center justify-between">
+                    <span className="text-xs text-zinc-400">Total Mind Pings Captured</span>
+                    <span className="text-xs font-mono font-bold text-zinc-200">
+                      {summary.totalThoughtsLogged}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          )}
-
-          {/* QUICK SNAPSHOT METRICS */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <div className="p-4 rounded-2xl glass-card border border-border">
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Total Net Focus</span>
-              <span className="text-xl font-bold font-mono text-focus">
-                {formatMinutesToDisplay(summary.totalNetMinutes)}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                {(summary.overallFocusRatio * 100).toFixed(0)}% focus ratio
-              </span>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-border">
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Mind Pings</span>
-              <span className="text-xl font-bold font-mono text-amber-400">
-                {summary.totalThoughtsLogged}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                stray thoughts audited
-              </span>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-border">
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Max Deep Streak</span>
-              <span className="text-xl font-bold font-mono text-deepwork-light">
-                {formatMinutesToDisplay(summary.longestDeepWorkStreakMinutes)}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                uninterrupted stretch
-              </span>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-border">
-              <span className="text-xs font-semibold text-slate-400 block mb-1">Completed Blocks</span>
-              <span className="text-xl font-bold font-mono text-white">
-                {summary.completedSessionsCount}
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                {summary.currentStreakDays} day streak
-              </span>
-            </div>
-          </div>
-
-          {/* RECENT STUDY SESSIONS & MIND PINGS LOG */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white tracking-tight">
-                  Recent Study Sessions & Mind Ping History
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Inspect gross vs. net time, focus scores, and logged interruptions
-                </p>
-              </div>
-
-              <button
-                onClick={() => router.push("/analytics")}
-                className="text-xs font-semibold text-focus hover:underline flex items-center gap-1"
-              >
-                <span>Full Analytics</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {sessions.length === 0 ? (
-              <div className="p-8 rounded-2xl glass-card border border-dashed border-border text-center space-y-3">
-                <BookOpen className="w-8 h-8 text-slate-600 mx-auto" />
-                <p className="text-sm text-slate-300 font-medium">No study sessions logged yet.</p>
-                <button
-                  onClick={() => setIsStartModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-focus text-slate-950 text-xs font-bold"
-                >
-                  Start Your First Session
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {sessions.slice(0, 5).map((sess) => {
-                  const grossMins = Math.round(sess.gross_duration_seconds / 60);
-                  const netMins = Math.round(sess.net_focus_seconds / 60);
-                  const lostMins = Math.max(0, grossMins - netMins);
-                  const dateFormatted = new Date(sess.start_time).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  });
-
-                  return (
-                    <div
-                      key={sess.id}
-                      onClick={() => setInspectedSession(sess)}
-                      className="p-4 sm:p-5 rounded-2xl glass-card border border-border hover:border-slate-700 cursor-pointer transition-all space-y-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: sess.subject?.color || "#10b981" }}
-                          />
-                          <span className="text-xs font-semibold text-slate-400">
-                            {sess.subject?.name || "General Subject"}
-                          </span>
-                          <span className="text-slate-600 text-xs">•</span>
-                          <span className="text-xs text-slate-500 font-mono">{dateFormatted}</span>
-                        </div>
-
-                        {/* Focus Score Badge */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-focus/15 text-focus border border-focus/30">
-                            Score: {sess.focus_score}/100
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Topic & Net/Gross Split */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <h4 className="text-sm sm:text-base font-bold text-white">
-                          {sess.topic}
-                        </h4>
-
-                        <div className="flex items-center gap-3 text-xs font-mono">
-                          <span className="text-focus font-bold">
-                            {netMins}m net focus
-                          </span>
-                          <span className="text-slate-500">/</span>
-                          <span className="text-slate-400">
-                            {grossMins}m clock
-                          </span>
-                          {lostMins > 0 && (
-                            <span className="text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 text-[11px]">
-                              -{lostMins}m pings
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* In-Session Mind Ping Chips Preview */}
-                      {sess.thoughts && sess.thoughts.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[11px] text-slate-500 font-medium mr-1">
-                            Pings:
-                          </span>
-                          {sess.thoughts.map((t, idx) => {
-                            const meta = CATEGORY_METADATA[t.category] || CATEGORY_METADATA.other;
-                            return (
-                              <span
-                                key={idx}
-                                className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 ${meta.badgeClass}`}
-                              >
-                                <span>{t.title}</span>
-                                <span className="font-mono opacity-80">~{t.approx_duration_minutes}m</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* User reflection / AI summary snippet */}
-                      {sess.ai_debrief?.summary && (
-                        <p className="text-xs text-slate-400 bg-surface-subtle p-2.5 rounded-xl border border-border/60 italic">
-                          &ldquo;{sess.ai_debrief.summary}&rdquo;
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <MobileNav />
-
-      {/* Start Session Modal */}
+      {/* Start Focus Modal */}
       <SessionStartModal
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
       />
 
-      {/* End Session & AI Debrief Modal */}
+      {/* End Session Debrief Modal */}
       <SessionEndDebriefModal
         isOpen={isDebriefModalOpen}
         onClose={() => setIsDebriefModalOpen(false)}
       />
 
-      {/* Inspected Session Detail Modal */}
-      {inspectedSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg rounded-3xl glass-panel p-6 sm:p-7 border border-border shadow-2xl relative max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between pb-4 border-b border-border/80">
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="w-3.5 h-3.5 rounded-full"
-                  style={{ backgroundColor: inspectedSession.subject?.color || "#10b981" }}
-                />
-                <div>
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    {inspectedSession.subject?.name}
-                  </span>
-                  <h3 className="text-base font-bold text-white">{inspectedSession.topic}</h3>
-                </div>
-              </div>
-              <button
-                onClick={() => setInspectedSession(null)}
-                className="text-xs px-3 py-1.5 rounded-lg border border-border text-slate-400 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-4 my-5">
-              {/* Duration split */}
-              <div className="grid grid-cols-3 gap-2.5 text-center">
-                <div className="p-3 rounded-xl bg-surface-card border border-border">
-                  <span className="text-[10px] text-slate-400 block">Gross Time</span>
-                  <span className="text-sm font-mono font-bold text-white">
-                    {Math.round(inspectedSession.gross_duration_seconds / 60)}m
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-focus/15 border border-focus/30">
-                  <span className="text-[10px] text-focus block">Net Focus</span>
-                  <span className="text-sm font-mono font-bold text-white">
-                    {Math.round(inspectedSession.net_focus_seconds / 60)}m
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-surface-card border border-border">
-                  <span className="text-[10px] text-slate-400 block">Focus Score</span>
-                  <span className="text-sm font-mono font-bold text-focus">
-                    {inspectedSession.focus_score}/100
-                  </span>
-                </div>
-              </div>
-
-              {/* AI Debrief */}
-              {inspectedSession.ai_debrief && (
-                <div className="p-4 rounded-2xl bg-surface-elevated border border-border space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-focus uppercase tracking-wider">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>AI Cognitive Debrief</span>
-                  </div>
-                  <p className="text-xs text-slate-200 leading-relaxed">
-                    {inspectedSession.ai_debrief.summary}
-                  </p>
-                  <p className="text-xs text-amber-300/90 pt-1 border-t border-border/60">
-                    <strong>Distraction Audit:</strong> {inspectedSession.ai_debrief.primaryDistractionDiagnosis}
-                  </p>
-                </div>
-              )}
-
-              {/* Mind Pings list */}
-              {inspectedSession.thoughts && inspectedSession.thoughts.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                    Logged Mind Pings ({inspectedSession.thoughts.length})
-                  </h4>
-                  <div className="space-y-1.5">
-                    {inspectedSession.thoughts.map((t, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 rounded-xl bg-surface-card border border-border/70 flex items-center justify-between text-xs"
-                      >
-                        <span className="text-slate-200">{t.title}</span>
-                        <span className="text-amber-400 font-mono font-semibold">
-                          ~{t.approx_duration_minutes}m lost
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* User Note */}
-              {inspectedSession.session_notes && (
-                <div className="p-3 rounded-xl bg-surface-subtle border border-border text-xs text-slate-300">
-                  <span className="text-slate-400 block text-[10px] font-semibold uppercase mb-0.5">
-                    Personal Reflection:
-                  </span>
-                  {inspectedSession.session_notes}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Add Subject Modal */}
+      {isNewSubjectModalOpen && (
+        <SubjectManager onClose={() => setIsNewSubjectModalOpen(false)} />
       )}
+
+      {/* Mobile Bottom Navigation */}
+      <MobileNav onOpenNewSession={() => setIsStartModalOpen(true)} />
     </div>
   );
 }

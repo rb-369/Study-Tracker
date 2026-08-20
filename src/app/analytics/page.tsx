@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, BarChart3, TrendingUp, Brain, Clock, Zap, Target } from "lucide-react";
+import { Sparkles, BarChart3, TrendingUp, Brain, Clock, Zap, Target, Play } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Navbar } from "@/components/layout/Navbar";
@@ -29,16 +29,17 @@ export default function AnalyticsPage() {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-focus border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
       </div>
     );
   }
 
   const summary = computeAnalyticsSummary(sessions);
+  const hasSessions = sessions.length > 0 && summary.completedSessionsCount > 0;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex">
       {/* Desktop Sidebar */}
       <Sidebar onOpenNewSession={() => setIsStartModalOpen(true)} />
 
@@ -46,99 +47,128 @@ export default function AnalyticsPage() {
       <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-8">
         <Navbar onOpenNewSession={() => setIsStartModalOpen(true)} />
 
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-8">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6">
           {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border/80">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold uppercase text-focus tracking-wider">
+                <span className="text-[11px] font-mono font-bold uppercase text-emerald-400 tracking-wider">
                   Deep Work Intelligence
                 </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-0.5">
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-100 tracking-tight mt-0.5">
                 Focus Analytics & Mind Ping Audit
               </h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                Isolate gross clock hours from true net focused cognition across all subjects
-              </p>
-            </div>
-          </div>
-
-          {/* 1. Focus Summary Metrics Grid */}
-          <FocusMetricsGrid summary={summary} />
-
-          {/* 2. Daily Trends Stacked Bar Chart */}
-          <FocusTrendsChart data={summary.dailyTrends} />
-
-          {/* 3. Distraction Breakdown + Circadian Rhythm Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <DistractionAnalysisCard distractions={summary.categoryWiseDistractions} />
-            <TimeOfDayHeatmap data={summary.hourlyHeatmap} />
-          </div>
-
-          {/* 4. Subject Time Allocation Breakdown */}
-          <div className="p-5 sm:p-6 rounded-2xl glass-card border border-border space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
-                Subject-Wise Net Focus Allocation
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Hours spent per coursework unit (excluding in-session mind pings)
+              <p className="text-xs text-zinc-400 mt-1">
+                Audit raw clock hours against genuine net focused cognition.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {summary.subjectWiseMinutes.map((sub) => {
-                const netHours = (sub.netMinutes / 60).toFixed(1);
-                const grossHours = (sub.grossMinutes / 60).toFixed(1);
-                const ratio = sub.grossMinutes > 0 ? (sub.netMinutes / sub.grossMinutes) * 100 : 100;
+            <button
+              onClick={() => setIsStartModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm"
+            >
+              <Play className="w-3.5 h-3.5 fill-zinc-950" />
+              <span>New Session</span>
+            </button>
+          </div>
 
-                return (
-                  <div
-                    key={sub.subjectId}
-                    className="p-4 rounded-xl bg-surface-elevated/50 border border-border/80 space-y-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: sub.color }}
-                      />
-                      <span className="text-xs font-bold text-slate-200 truncate">
-                        {sub.subjectName}
-                      </span>
-                    </div>
+          {!hasSessions ? (
+            /* Empty state when 0 sessions logged */
+            <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-12 text-center max-w-xl mx-auto my-12 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-emerald-400 mx-auto">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-bold text-zinc-100">
+                No Analytics Data Yet
+              </h2>
+              <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                As soon as you complete your first study session and log in-session mind pings, your Focus Ratio trends, distraction breakdowns, and circadian heatmaps will automatically appear here.
+              </p>
+              <button
+                onClick={() => setIsStartModalOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20"
+              >
+                Start First Session
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 1. Focus Summary Metrics Grid */}
+              <FocusMetricsGrid summary={summary} />
 
-                    <div className="flex items-baseline justify-between pt-1">
-                      <span className="text-lg font-mono font-bold text-white">
-                        {netHours}h
-                      </span>
-                      <span className="text-[11px] font-mono text-focus font-semibold">
-                        {ratio.toFixed(0)}% focus
-                      </span>
-                    </div>
+              {/* 2. Daily Trends Stacked Bar Chart */}
+              <FocusTrendsChart data={summary.dailyTrends} />
 
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      {grossHours}h gross clock time
+              {/* 3. Distraction Breakdown + Circadian Rhythm Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <DistractionAnalysisCard distractions={summary.categoryWiseDistractions} />
+                <TimeOfDayHeatmap data={summary.hourlyHeatmap} />
+              </div>
+
+              {/* 4. Subject Time Allocation Breakdown */}
+              {summary.subjectWiseMinutes.length > 0 && (
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#121215] border border-zinc-800 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-100">
+                      Subject Net Focus Allocation
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Net focus time per coursework unit (excluding stray mind pings)
                     </p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* 5. Weekly AI Cognitive Digest */}
-          <WeeklyAIReportCard summary={summary} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {summary.subjectWiseMinutes.map((sub) => {
+                      const netHours = (sub.netMinutes / 60).toFixed(1);
+                      const grossHours = (sub.grossMinutes / 60).toFixed(1);
+                      const ratio = sub.grossMinutes > 0 ? (sub.netMinutes / sub.grossMinutes) * 100 : 100;
+
+                      return (
+                        <div
+                          key={sub.subjectId}
+                          className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2"
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: sub.color || "#10b981" }}
+                            />
+                            <span className="text-xs font-semibold text-zinc-200 truncate">
+                              {sub.subjectName}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-sm font-mono font-bold text-zinc-100">
+                              {netHours}h <span className="text-[10px] text-zinc-500 font-normal">net</span>
+                            </span>
+                            <span className="text-[11px] font-mono text-emerald-400">
+                              {Math.round(ratio)}% ratio
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 5. Weekly AI Cognitive Report Card */}
+              <WeeklyAIReportCard summary={summary} />
+            </>
+          )}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <MobileNav />
-
-      {/* Start Session Modal */}
+      {/* Start Focus Modal */}
       <SessionStartModal
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
       />
+
+      {/* Mobile Nav */}
+      <MobileNav onOpenNewSession={() => setIsStartModalOpen(true)} />
     </div>
   );
 }

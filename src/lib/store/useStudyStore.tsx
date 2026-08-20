@@ -159,13 +159,10 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
-      if (subjData && subjData.length > 0) {
+      if (subjData) {
         setSubjects(subjData);
       } else {
-        // Seed default subjects for new user
-        const seeded = INITIAL_SUBJECTS.map((s) => ({ ...s, user_id: userId, id: undefined }));
-        const { data: createdSubjs } = await supabase.from('subjects').insert(seeded).select();
-        if (createdSubjs) setSubjects(createdSubjs);
+        setSubjects([]);
       }
 
       const { data: sessData } = await supabase
@@ -174,15 +171,15 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         .eq('user_id', userId)
         .order('start_time', { ascending: false });
 
-      if (sessData && sessData.length > 0) {
+      if (sessData) {
         setSessions(sessData);
       } else {
-        setSessions(INITIAL_SESSIONS);
+        setSessions([]);
       }
     } catch (e) {
       console.error("Error loading Supabase data:", e);
-      setSubjects(INITIAL_SUBJECTS);
-      setSessions(INITIAL_SESSIONS);
+      setSubjects([]);
+      setSessions([]);
     }
   };
 
@@ -274,13 +271,21 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInAsDemoUser = () => {
-    setUser(INITIAL_PROFILE);
+    const demoUser: UserProfile = {
+      id: "guest-user",
+      email: "guest@studyflow.local",
+      full_name: "Guest Scholar",
+      avatar_url: undefined,
+      target_daily_minutes: 120,
+      created_at: new Date().toISOString(),
+    };
+    setUser(demoUser);
     setIsAuthenticated(true);
-    setSubjects(INITIAL_SUBJECTS);
-    setSessions(INITIAL_SESSIONS);
-    localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(INITIAL_PROFILE));
-    localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(INITIAL_SUBJECTS));
-    localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(INITIAL_SESSIONS));
+    setSubjects([]);
+    setSessions([]);
+    localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(demoUser));
+    localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify([]));
     document.cookie = "studyflow_demo_user=true; path=/; max-age=604800";
   };
 
@@ -307,11 +312,19 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     type: SessionType,
     targetMinutes: number = 25
   ) => {
-    const subject = subjects.find((s) => s.id === subjectId) || subjects[0];
+    const subject = subjects.find((s) => s.id === subjectId) || {
+      id: subjectId || "general",
+      user_id: user?.id || "user",
+      name: "General Study",
+      color: "#10b981",
+      icon: "BookOpen",
+      target_weekly_hours: 10,
+      created_at: new Date().toISOString(),
+    };
     const newSession: StudySession = {
       id: `sess-${Date.now()}`,
-      user_id: user?.id || "demo-user-id",
-      subject_id: subjectId,
+      user_id: user?.id || "user",
+      subject_id: subject.id,
       topic: topic.trim() || "Deep Study Block",
       start_time: new Date().toISOString(),
       end_time: null,

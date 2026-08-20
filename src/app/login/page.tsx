@@ -11,7 +11,6 @@ import {
   ShieldCheck, 
   ArrowRight, 
   BarChart3, 
-  CheckCircle2, 
   Lock,
   AlertCircle,
   X
@@ -36,7 +35,7 @@ function AuthErrorBanner({ onDismiss }: { onDismiss: () => void }) {
   );
 
   return (
-    <div className="mt-4 p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 max-w-lg mx-auto text-left animate-slide-up">
+    <div className="mt-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 max-w-lg mx-auto text-left animate-slide-up">
       <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
       <div className="flex-1">
         <p className="font-semibold text-rose-200">Authentication Notice</p>
@@ -80,59 +79,54 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col justify-between selection:bg-focus selection:text-slate-950 relative overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-focus/15 via-deepwork/10 to-transparent blur-3xl pointer-events-none" />
-
+    <div className="min-h-[100dvh] bg-[#09090b] text-zinc-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-zinc-950 relative overflow-hidden">
       {/* Top Navbar */}
-      <header className="relative z-10 w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-focus/15 border border-focus/30 flex items-center justify-center text-focus shadow-lg shadow-focus/10">
-            <Sparkles className="w-5 h-5 text-focus" />
+      <header className="relative z-10 w-full max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-lg tracking-tight text-white">StudyFlow</span>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-full bg-focus/10 text-focus border border-focus/25 font-semibold">
-                AI
-              </span>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-sm tracking-tight text-zinc-100">StudyFlow</span>
+            <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+              AI
+            </span>
           </div>
         </div>
 
         <button
           onClick={handleDemoLogin}
-          className="text-xs font-semibold px-4 py-2 rounded-xl bg-surface-elevated/80 border border-border text-slate-300 hover:text-white hover:border-slate-700 transition-all"
+          className="text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 transition-all"
         >
           Instant Demo Mode
         </button>
       </header>
 
       {/* Hero Section */}
-      <main className="relative z-10 w-full max-w-5xl mx-auto px-6 py-8 sm:py-12 flex flex-col items-center text-center">
+      <main className="relative z-10 w-full max-w-4xl mx-auto px-6 py-8 sm:py-14 flex flex-col items-center text-center">
         {/* Eyebrow badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-elevated/90 border border-focus/30 text-focus text-xs font-medium mb-6 shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-focus animate-pulse" />
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-medium mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>The First AI Study Tracker with In-Session Mind Pings</span>
         </div>
 
         {/* Headline */}
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white max-w-3xl leading-[1.1]">
-          Stop confusing raw clock time with <span className="text-transparent bg-clip-text bg-gradient-to-r from-focus via-emerald-300 to-focus-light">real focused study.</span>
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white max-w-2xl leading-[1.15]">
+          Stop confusing raw clock time with <span className="text-emerald-400">real focused study.</span>
         </h1>
 
         {/* Subtext */}
-        <p className="text-base sm:text-lg text-slate-400 max-w-xl mt-4 leading-relaxed">
+        <p className="text-sm sm:text-base text-zinc-400 max-w-lg mt-4 leading-relaxed">
           Log in-between stray thoughts in 1-tap, isolate net deep work, and receive automated AI debriefs.
         </p>
 
         {/* Primary Auth Gate CTAs */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center gap-3.5 w-full max-w-md">
+        <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-sm">
           {/* Sign in with Google Button */}
           <button
             onClick={handleGoogleLogin}
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm transition-all shadow-xl shadow-white/10 active:scale-[0.98] flex items-center justify-center gap-3 border border-slate-200"
+            className="w-full py-3 px-5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2.5 shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -158,10 +152,10 @@ export default function LoginPage() {
           {/* Instant Demo CTA */}
           <button
             onClick={handleDemoLogin}
-            className="w-full py-3.5 px-6 rounded-2xl bg-surface-elevated hover:bg-slate-800 border border-border text-slate-200 font-semibold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full py-3 px-5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
           >
             <span>Try Guest Demo</span>
-            <ArrowRight className="w-4 h-4 text-focus" />
+            <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
           </button>
         </div>
 
@@ -176,33 +170,33 @@ export default function LoginPage() {
         )}
 
         {/* Feature Highlights Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 w-full text-left">
-          <div className="p-5 rounded-2xl glass-card border border-border">
-            <div className="w-9 h-9 rounded-xl bg-focus/15 border border-focus/30 flex items-center justify-center text-focus mb-3">
-              <Zap className="w-4 h-4 text-focus" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-12 w-full text-left">
+          <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-2.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
             </div>
-            <h3 className="text-sm font-bold text-white mb-1">In-Session Mind Pings</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Capture wandering thoughts in 1-tap. Automatically subtract context-switch minutes to compute true Focus Ratio.
+            <h3 className="text-xs font-bold text-zinc-100 mb-0.5">In-Session Mind Pings</h3>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Capture wandering thoughts in 1-tap. Automatically subtract context-switch minutes to calculate true Focus Ratio.
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl glass-card border border-border">
-            <div className="w-9 h-9 rounded-xl bg-deepwork/15 border border-deepwork/30 flex items-center justify-center text-deepwork-light mb-3">
-              <Brain className="w-4 h-4 text-deepwork-light" />
+          <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800">
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-2.5">
+              <Brain className="w-3.5 h-3.5 text-indigo-400" />
             </div>
-            <h3 className="text-sm font-bold text-white mb-1">Post-Session AI Debrief</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Immediate feedback on your flow state, focus score out of 100, and actionable focus habit recommendations.
+            <h3 className="text-xs font-bold text-zinc-100 mb-0.5">Post-Session AI Debrief</h3>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Immediate feedback on your flow state, focus score out of 100, and actionable habit recommendations.
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl glass-card border border-border">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3">
-              <BarChart3 className="w-4 h-4 text-amber-400" />
+          <div className="p-4 rounded-xl bg-[#121215] border border-zinc-800">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-2.5">
+              <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
             </div>
-            <h3 className="text-sm font-bold text-white mb-1">Circadian Focus Trends</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <h3 className="text-xs font-bold text-zinc-100 mb-0.5">Circadian Focus Trends</h3>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
               Spot your peak cognitive hours, top distraction triggers, and weekly syllabus progress.
             </p>
           </div>
@@ -210,11 +204,11 @@ export default function LoginPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 w-full border-t border-border/70 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3">
-          <span>StudyFlow — Deep Work Capacity Engine</span>
+      <footer className="relative z-10 w-full border-t border-zinc-800/80 py-5 text-center text-[11px] text-zinc-500">
+        <div className="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3">
+          <span>StudyFlow &bull; Deep Work Capacity Engine</span>
           <span className="flex items-center gap-1.5">
-            <Lock className="w-3 h-3 text-focus" />
+            <Lock className="w-3 h-3 text-emerald-400" />
             <span>Private & Encrypted with Supabase RLS</span>
           </span>
         </div>

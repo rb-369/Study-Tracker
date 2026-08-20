@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Sparkles, Plus, Play, User as UserIcon } from "lucide-react";
+import { Sparkles, Play, LogOut } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 
 interface NavbarProps {
@@ -10,46 +10,46 @@ interface NavbarProps {
 }
 
 export function Navbar({ onOpenNewSession }: NavbarProps) {
-  const { user, activeSession, isAuthenticated } = useStudyStore();
+  const { user, activeSession, isAuthenticated, signOut } = useStudyStore();
 
   return (
-    <header className="lg:hidden sticky top-0 z-40 w-full border-b border-border bg-surface-card/90 backdrop-blur-md px-4 py-3 flex items-center justify-between">
+    <header className="lg:hidden sticky top-0 z-40 w-full border-b border-zinc-800/80 bg-[#09090b]/90 backdrop-blur-md px-4 py-3 flex items-center justify-between">
       <Link href="/" className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg bg-focus/15 border border-focus/30 flex items-center justify-center text-focus">
-          <Sparkles className="w-4 h-4 text-focus" />
+        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
         </div>
-        <span className="font-bold text-base tracking-tight text-white">StudyFlow</span>
+        <span className="font-bold text-sm tracking-tight text-zinc-100">StudyFlow</span>
       </Link>
 
       <div className="flex items-center gap-2">
         {activeSession ? (
           <Link
             href="/"
-            className="px-2.5 py-1 rounded-full bg-focus/15 border border-focus/30 text-focus text-xs font-medium flex items-center gap-1.5"
+            className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-center gap-1.5"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-focus animate-ping" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
             <span>Active</span>
           </Link>
         ) : (
           <button
             onClick={onOpenNewSession}
-            className="px-3 py-1.5 rounded-lg bg-focus text-slate-950 text-xs font-semibold flex items-center gap-1 hover:opacity-95"
+            className="px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold flex items-center gap-1 hover:bg-white active:scale-95 transition-all"
           >
-            <Play className="w-3.5 h-3.5 fill-slate-950" />
-            <span>Study</span>
+            <Play className="w-3 h-3 fill-zinc-950" />
+            <span>Start</span>
           </button>
         )}
 
         {isAuthenticated && user && (
-          <Link href="/settings" className="p-1 rounded-full border border-border">
+          <Link href="/settings" className="p-1 rounded-full border border-zinc-800">
             {user.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt={user.full_name}
-                className="w-7 h-7 rounded-full object-cover"
+                className="w-6 h-6 rounded-full object-cover"
               />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-300">
+              <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-300">
                 {user.full_name?.charAt(0) || "U"}
               </div>
             )}
