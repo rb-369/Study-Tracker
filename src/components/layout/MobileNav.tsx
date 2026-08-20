@@ -6,7 +6,11 @@ import { usePathname } from "next/navigation";
 import { Flame, BarChart3, BookOpen, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function MobileNav() {
+interface MobileNavProps {
+  onOpenNewSession?: () => void;
+}
+
+export function MobileNav({ onOpenNewSession }: MobileNavProps) {
   const pathname = usePathname();
 
   const navItems = [
@@ -17,7 +21,7 @@ export function MobileNav() {
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-card/95 backdrop-blur-xl border-t border-border px-3 py-2 flex items-center justify-around">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-xl border-t border-zinc-800/80 px-3 py-2 flex items-center justify-around">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.href;
@@ -27,10 +31,10 @@ export function MobileNav() {
             href={item.href}
             className={cn(
               "flex flex-col items-center gap-1 py-1 px-3 rounded-lg text-xs transition-colors",
-              isActive ? "text-focus font-semibold" : "text-slate-400 hover:text-slate-200"
+              isActive ? "text-emerald-400 font-semibold" : "text-zinc-500 hover:text-zinc-300"
             )}
           >
-            <Icon className={cn("w-5 h-5", isActive ? "text-focus" : "text-slate-400")} />
+            <Icon className={cn("w-4 h-4", isActive ? "text-emerald-400" : "text-zinc-500")} />
             <span>{item.label}</span>
           </Link>
         );

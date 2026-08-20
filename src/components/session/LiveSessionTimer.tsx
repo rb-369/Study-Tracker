@@ -238,11 +238,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
             <button
               key={cat.key}
               onClick={() => {
-                addThought({
-                  category: cat.key,
-                  approx_duration_minutes: cat.minutes,
-                  description: cat.label,
-                });
+                addThought(cat.label, cat.key, cat.minutes);
               }}
               className="py-2 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-left transition-all active:scale-95 flex items-center justify-between"
             >
@@ -273,7 +269,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300"
                 >
                   <span>{meta.icon}</span>
-                  <span>{thought.description || meta.label}</span>
+                  <span>{thought.title || meta.label}</span>
                   <span className="text-rose-400 font-mono font-medium text-[10px]">
                     -{thought.approx_duration_minutes}m
                   </span>
@@ -317,6 +313,9 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
       <MindPingLoggerModal
         isOpen={isPingModalOpen}
         onClose={() => setIsPingModalOpen(false)}
+        onSubmit={(title, category, duration, notes) => {
+          addThought(title, category, duration, notes);
+        }}
       />
     </div>
   );

@@ -31,8 +31,12 @@ interface StudyContextType {
   resumeSession: () => void;
   addThought: (title: string, category: ThoughtCategory, approxDurationMinutes: number, notes?: string) => void;
   endSession: (sessionNotes?: string) => Promise<AIDebrief | null>;
-  abandonSession: () => void;
-  createSubject: (name: string, color: string, icon: string, targetWeeklyHours: number) => Promise<Subject>;
+  createSubject: (
+    nameOrObj: string | { name: string; color?: string; icon?: string; target_weekly_hours?: number },
+    color?: string,
+    icon?: string,
+    targetWeeklyHours?: number
+  ) => Promise<Subject>;
   updateSubject: (id: string, updates: Partial<Subject>) => Promise<void>;
   deleteSubject: (id: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -518,24 +522,38 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   };
 
   const createSubject = async (
-    name: string,
-    color: string,
-    icon: string,
-    targetWeeklyHours: number
+    nameOrObj: string | { name: string; color?: string; icon?: string; target_weekly_hours?: number },
+    color: string = "#10b981",
+    icon: string = "BookOpen",
+    targetWeeklyHours: number = 10
   ): Promise<Subject> => {
+    let finalName = "";
+    let finalColor = color;
+    let finalIcon = icon;
+    let finalTarget = targetWeeklyHours;
+
+    if (typeof nameOrObj === "object") {
+      finalName = nameOrObj.name;
+      if (nameOrObj.color) finalColor = nameOrObj.color;
+      if (nameOrObj.icon) finalIcon = nameOrObj.icon;
+      if (nameOrObj.target_weekly_hours) finalTarget = nameOrObj.target_weekly_hours;
+    } else {
+      finalName = nameOrObj;
+    }
+
     const newSubject: Subject = {
       id: `sub-${Date.now()}`,
-      user_id: user?.id || "demo-user-id",
-      name: name.trim(),
-      color,
-      icon,
-      target_weekly_hours: targetWeeklyHours,
+      user_id: user?.id || "user",
+      name: finalName.trim(),
+      color: finalColor,
+      icon: finalIcon,
+      target_weekly_hours: finalTarget,
       created_at: new Date().toISOString(),
     };
 
     setSubjects((prev) => [...prev, newSubject]);
 
-    if (user && !user.id.startsWith("demo-")) {
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
         const { data } = await supabase.from("subjects").insert(newSubject).select().single();
         if (data) return data;

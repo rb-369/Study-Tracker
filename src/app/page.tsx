@@ -168,8 +168,8 @@ export default function DashboardPage() {
                     <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-zinc-800/80">
                       <span className="text-[10px] uppercase font-mono text-zinc-500">All-Time Net</span>
                       <div className="text-base sm:text-lg font-bold text-zinc-100 font-mono mt-0.5">
-                        {summary.totalNetFocusMinutes > 0 
-                          ? formatMinutesToDisplay(summary.totalNetFocusMinutes) 
+                        {summary.totalNetMinutes > 0 
+                          ? formatMinutesToDisplay(summary.totalNetMinutes) 
                           : "0m"}
                       </div>
                     </div>
@@ -178,7 +178,7 @@ export default function DashboardPage() {
                       <span className="text-[10px] uppercase font-mono text-zinc-500">Focus Ratio</span>
                       <div className="text-base sm:text-lg font-bold text-emerald-400 font-mono mt-0.5">
                         {summary.completedSessionsCount > 0 
-                          ? `${Math.round(summary.averageFocusRatio * 100)}%` 
+                          ? `${Math.round(summary.overallFocusRatio * 100)}%` 
                           : "100%"}
                       </div>
                     </div>
