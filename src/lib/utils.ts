@@ -81,3 +81,61 @@ export function generateUUID(): string {
     return v.toString(16);
   });
 }
+
+export function exportSessionsToCSV(sessions: any[]): void {
+  if (!sessions || sessions.length === 0) return;
+
+  const headers = [
+    "Date",
+    "Subject",
+    "Topic",
+    "Session Type",
+    "Status",
+    "Gross Duration (mins)",
+    "Net Focus (mins)",
+    "Focus Ratio (%)",
+    "Focus Score",
+    "Mind Pings Count",
+    "Mind Pings (Categories & Duration)",
+    "Session Notes",
+    "AI Debrief Summary",
+  ];
+
+  const rows = sessions.map((s) => {
+    const dStr = s.start_time ? new Date(s.start_time).toLocaleDateString("en-US") : "";
+    const grossMins = Math.round((s.gross_duration_seconds || 0) / 60);
+    const netMins = Math.round((s.net_focus_seconds || 0) / 60);
+    const ratio = s.gross_duration_seconds > 0
+      ? Math.round((s.net_focus_seconds / s.gross_duration_seconds) * 100)
+      : 100;
+    const thoughts = (s.thoughts || [])
+      .map((t: any) => `${t.title || 'Ping'} (${t.category}, ${t.approx_duration_minutes || 0}m)`)
+      .join("; ");
+
+    return [
+      `"${dStr}"`,
+      `"${(s.subject?.name || "General").replace(/"/g, '""')}"`,
+      `"${(s.topic || "").replace(/"/g, '""')}"`,
+      `"${s.session_type || "stopwatch"}"`,
+      `"${s.status || "completed"}"`,
+      grossMins,
+      netMins,
+      ratio,
+      s.focus_score || "",
+      (s.thoughts || []).length,
+      `"${thoughts.replace(/"/g, '""')}"`,
+      `"${(s.session_notes || "").replace(/"/g, '""')}"`,
+      `"${(s.ai_debrief?.summary || "").replace(/"/g, '""')}"`,
+    ].join(",");
+  });
+
+  const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `studyflow_sessions_${new Date().toISOString().split("T")[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+

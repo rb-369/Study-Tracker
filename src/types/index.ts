@@ -84,7 +84,10 @@ export interface WeeklyAIReport {
   strategicRecommendations: string[];
 }
 
+export type AnalyticsTimeframe = '7d' | '14d' | '30d' | 'all';
+
 export interface AnalyticsSummary {
+  timeframe: AnalyticsTimeframe;
   totalGrossMinutes: number;
   totalNetMinutes: number;
   overallFocusRatio: number; // e.g. 0.88 for 88%
@@ -93,8 +96,20 @@ export interface AnalyticsSummary {
   avgSessionMinutes: number;
   longestDeepWorkStreakMinutes: number;
   currentStreakDays: number;
+  pingsPerHour: number;
+  avgPingDurationMinutes: number;
+  avgFocusScore: number;
+  flowStateDistribution: { rating: string; count: number; percentage: number; color: string }[];
+  topThoughtTitles: { title: string; count: number; totalMinutes: number; category: ThoughtCategory }[];
   subjectWiseMinutes: { subjectId: string; subjectName: string; color: string; grossMinutes: number; netMinutes: number }[];
   categoryWiseDistractions: { category: ThoughtCategory; count: number; totalMinutes: number; label: string }[];
-  dailyTrends: { date: string; displayDate: string; grossMinutes: number; netMinutes: number; focusRatio: number }[];
+  dailyTrends: { date: string; displayDate: string; grossMinutes: number; netMinutes: number; focusRatio: number; focusScore: number }[];
   hourlyHeatmap: { hour: number; dayOfWeek: number; count: number; avgFocusRatio: number }[];
+  comparison?: {
+    priorNetMinutes: number;
+    netMinutesGrowthPct: number;
+    priorFocusRatio: number;
+    focusRatioDeltaPct: number;
+  };
 }
+

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Clock, Sun, Moon } from "lucide-react";
+import { Clock, Sun, Moon, Sparkles } from "lucide-react";
 
 interface HeatmapPoint {
   hour: number;
@@ -33,26 +33,29 @@ export function TimeOfDayHeatmap({ data }: TimeOfDayHeatmapProps) {
 
   const maxCount = Math.max(1, ...hourlyActivity.map((h) => h.count));
 
-  // Find peak hour
-  const peakHour = [...hourlyActivity].sort((a, b) => b.count - a.count)[0];
+  // Find peak hour with highest sessions and ratio
+  const activeHours = hourlyActivity.filter((h) => h.count > 0);
+  const peakHour = activeHours.length > 0
+    ? [...activeHours].sort((a, b) => b.count - a.count || b.avgRatio - a.avgRatio)[0]
+    : null;
 
   return (
-    <div className="p-5 sm:p-6 rounded-2xl glass-card border border-border">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+    <div className="p-5 sm:p-6 rounded-2xl bg-[#121215] border border-zinc-800 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <Clock className="w-4 h-4 text-focus" />
-            <span>Circadian Focus Rhythm</span>
+          <h3 className="text-sm sm:text-base font-bold text-zinc-100 tracking-tight flex items-center gap-2">
+            <Clock className="w-4 h-4 text-emerald-400" />
+            <span>Circadian Focus Rhythm & Chronotype</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Hourly study frequency and cognitive focus ratio across the day
+          <p className="text-xs text-zinc-400 mt-0.5">
+            24-hour distribution of focus start times and cognitive velocity
           </p>
         </div>
 
-        {peakHour && peakHour.count > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-focus/10 border border-focus/25 text-xs text-focus font-medium">
-            <span className="w-2 h-2 rounded-full bg-focus animate-pulse" />
-            <span>Peak Flow Window: <strong>{peakHour.label}</strong></span>
+        {peakHour && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-400 font-medium">
+            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+            <span>Peak Flow Window: <strong>{peakHour.label}</strong> ({Math.round(peakHour.avgRatio * 100)}% ratio)</span>
           </div>
         )}
       </div>
@@ -63,17 +66,17 @@ export function TimeOfDayHeatmap({ data }: TimeOfDayHeatmapProps) {
           const intensity = item.count > 0 ? Math.min(1, item.count / maxCount) : 0;
           const focusColor =
             item.count === 0
-              ? "bg-surface-subtle border-border/40 text-slate-600"
+              ? "bg-zinc-900/60 border-zinc-800 text-zinc-600"
               : intensity > 0.7
-              ? "bg-focus text-slate-950 border-focus shadow-sm font-bold"
+              ? "bg-emerald-500 text-zinc-950 border-emerald-400 shadow-md font-bold"
               : intensity > 0.3
-              ? "bg-focus/60 text-white border-focus/70"
-              : "bg-focus/25 text-focus border-focus/40";
+              ? "bg-emerald-500/60 text-white border-emerald-500/70"
+              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
 
           return (
             <div
               key={item.hour}
-              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${focusColor}`}
+              className={`p-2 sm:p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${focusColor}`}
               title={`${item.label}: ${item.count} sessions, ${(item.avgRatio * 100).toFixed(0)}% focus ratio`}
             >
               <span className="text-[10px] uppercase font-mono font-medium block truncate">
@@ -88,14 +91,14 @@ export function TimeOfDayHeatmap({ data }: TimeOfDayHeatmapProps) {
       </div>
 
       {/* Footer Legend */}
-      <div className="flex items-center justify-between text-xs text-slate-400 mt-5 pt-4 border-t border-border/80">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 pt-3 border-t border-zinc-800/80">
         <div className="flex items-center gap-2">
           <Sun className="w-3.5 h-3.5 text-amber-400" />
-          <span>Daylight (6 AM - 6 PM)</span>
+          <span>Daylight Sprints (6 AM - 6 PM)</span>
         </div>
         <div className="flex items-center gap-2">
           <Moon className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Night / Late Sprints (6 PM - 6 AM)</span>
+          <span>Night Flow (6 PM - 6 AM)</span>
         </div>
       </div>
     </div>
