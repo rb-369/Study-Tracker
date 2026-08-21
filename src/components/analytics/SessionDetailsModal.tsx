@@ -4,6 +4,7 @@ import React from "react";
 import { X, Clock, Zap, Brain, Sparkles, BookOpen, Calendar, CheckCircle2, MessageSquare, AlertCircle } from "lucide-react";
 import { StudySession } from "@/types";
 import { CATEGORY_METADATA, formatMinutesToDisplay } from "@/lib/utils";
+import { resolveSessionThoughts } from "@/lib/analytics/metrics";
 
 interface SessionDetailsModalProps {
   session: StudySession | null;
@@ -15,10 +16,11 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
 
   const grossMins = Math.round(session.gross_duration_seconds / 60);
   const netMins = Math.round(session.net_focus_seconds / 60);
-  const thoughts = session.thoughts || [];
-  const recordedThoughtMins = thoughts.reduce((acc, t) => acc + (t.approx_duration_minutes || 0), 0);
+  const { thoughts: activeThoughts, inferredCategory, inferredCount } = resolveSessionThoughts(session);
+  const recordedThoughtMins = activeThoughts.reduce((acc, t) => acc + (t.approx_duration_minutes || 0), 0);
   const lostMins = Math.max(0, grossMins - netMins);
   const totalThoughtMins = Math.max(recordedThoughtMins, lostMins);
+  const totalPingsCount = activeThoughts.length > 0 ? activeThoughts.length : inferredCount;
   const focusRatio = session.gross_duration_seconds > 0
     ? Math.round((session.net_focus_seconds / session.gross_duration_seconds) * 100)
     : 100;
@@ -119,17 +121,17 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
               <Brain className="w-3.5 h-3.5 text-amber-400" />
-              <span>Mind Pings & Attention Detours ({thoughts.length})</span>
+              <span>Mind Pings & Attention Detours ({totalPingsCount})</span>
             </h3>
             <span className="text-xs font-mono text-zinc-400">
               {totalThoughtMins}m total deducted
             </span>
           </div>
 
-          {thoughts.length === 0 ? (
+          {activeThoughts.length === 0 ? (
             lostMins > 0 ? (
               <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center text-xs text-amber-400/80">
-                ⚡ ~{lostMins}m of context switching / distraction time was deducted during this study session.
+                ⚡ {inferredCount > 0 ? `${inferredCount} mind pings` : `~${lostMins}m`} recorded ({inferredCategory.replace('_', ' ')} & context switching).
               </div>
             ) : (
               <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center text-xs text-emerald-400/80">
@@ -138,7 +140,7 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
             )
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {thoughts.map((t, idx) => {
+              {activeThoughts.map((t, idx) => {
                 const meta = CATEGORY_METADATA[t.category] || CATEGORY_METADATA.other;
                 const pingTime = new Date(t.timestamp).toLocaleTimeString([], {
                   hour: "2-digit",

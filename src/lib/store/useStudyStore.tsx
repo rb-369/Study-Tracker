@@ -287,10 +287,25 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
             thoughtsBySession.get(t.session_id)!.push(t);
           });
 
-          fetchedSessions = fetchedSessions.map((s) => ({
-            ...s,
-            thoughts: thoughtsBySession.get(s.id) || s.thoughts || [],
-          }));
+          fetchedSessions = fetchedSessions.map((s) => {
+            const joinedThoughts = s.thoughts && s.thoughts.length > 0 ? s.thoughts : [];
+            const debriefThoughts = s.ai_debrief?.loggedThoughts && s.ai_debrief.loggedThoughts.length > 0 ? s.ai_debrief.loggedThoughts : [];
+            const directThoughts = thoughtsBySession.get(s.id) || [];
+            const finalThoughts = joinedThoughts.length > 0 ? joinedThoughts : (debriefThoughts.length > 0 ? debriefThoughts : directThoughts);
+            return {
+              ...s,
+              thoughts: finalThoughts,
+            };
+          });
+        } else {
+          fetchedSessions = fetchedSessions.map((s) => {
+            const joinedThoughts = s.thoughts && s.thoughts.length > 0 ? s.thoughts : [];
+            const debriefThoughts = s.ai_debrief?.loggedThoughts && s.ai_debrief.loggedThoughts.length > 0 ? s.ai_debrief.loggedThoughts : [];
+            return {
+              ...s,
+              thoughts: joinedThoughts.length > 0 ? joinedThoughts : debriefThoughts,
+            };
+          });
         }
       } catch (tErr) {
         console.warn("Direct thoughts query fallback:", tErr);
@@ -661,6 +676,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
+    const enrichedDebrief: AIDebrief = {
+      ...debrief,
+      loggedThoughts: activeSession.thoughts || [],
+    };
+
     const completedSession: StudySession = {
       ...activeSession,
       end_time: endTime,
@@ -669,7 +689,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       status: "completed",
       session_notes: sessionNotes,
       focus_score: score,
-      ai_debrief: debrief,
+      ai_debrief: enrichedDebrief,
     };
 
     // Save locally

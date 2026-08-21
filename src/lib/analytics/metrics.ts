@@ -26,6 +26,48 @@ export function calculateFocusScore(
   return finalScore;
 }
 
+export function resolveSessionThoughts(session: StudySession): {
+  thoughts: Thought[];
+  inferredCategory: ThoughtCategory;
+  inferredCount: number;
+} {
+  if (session.thoughts && session.thoughts.length > 0) {
+    return {
+      thoughts: session.thoughts,
+      inferredCategory: session.thoughts[0].category,
+      inferredCount: session.thoughts.length,
+    };
+  }
+
+  if (session.ai_debrief?.loggedThoughts && session.ai_debrief.loggedThoughts.length > 0) {
+    return {
+      thoughts: session.ai_debrief.loggedThoughts,
+      inferredCategory: session.ai_debrief.loggedThoughts[0].category,
+      inferredCount: session.ai_debrief.loggedThoughts.length,
+    };
+  }
+
+  // Parse AI diagnosis text to recover category & count
+  const diagnosis = session.ai_debrief?.primaryDistractionDiagnosis?.toLowerCase() || "";
+  let inferredCategory: ThoughtCategory = "other";
+  if (diagnosis.includes("phone") || diagnosis.includes("social") || diagnosis.includes("message") || diagnosis.includes("instagram")) {
+    inferredCategory = "phone_social";
+  } else if (diagnosis.includes("snack") || diagnosis.includes("hunger") || diagnosis.includes("water") || diagnosis.includes("coffee") || diagnosis.includes("food")) {
+    inferredCategory = "hunger_snack";
+  } else if (diagnosis.includes("random idea") || diagnosis.includes("idea") || diagnosis.includes("thought")) {
+    inferredCategory = "random_idea";
+  } else if (diagnosis.includes("daydream") || diagnosis.includes("anxiety") || diagnosis.includes("stress") || diagnosis.includes("overwhelm")) {
+    inferredCategory = "anxiety_stress";
+  } else if (diagnosis.includes("chore") || diagnosis.includes("errand") || diagnosis.includes("urgent")) {
+    inferredCategory = "urgent_chore";
+  }
+
+  const match = diagnosis.match(/(?:captured|noticed|recorded|\b)(\d+)\s+mind\s+ping/i);
+  const inferredCount = match ? parseInt(match[1], 10) : 0;
+
+  return { thoughts: [], inferredCategory, inferredCount };
+}
+
 export function computeAnalyticsSummary(
   sessions: StudySession[],
   timeframe: AnalyticsTimeframe = "7d"
@@ -120,13 +162,15 @@ export function computeAnalyticsSummary(
     else if (ratio >= 0.6) flowBuckets.moderate += 1;
     else flowBuckets.distracted += 1;
 
+    const { thoughts: activeThoughts, inferredCategory, inferredCount } = resolveSessionThoughts(session);
+
     // Calculate longest continuous uninterrupted focus interval within this session
-    if (!session.thoughts || session.thoughts.length === 0) {
+    if (activeThoughts.length === 0) {
       if (sessionMinutes > maxDeepWorkMinutes) {
         maxDeepWorkMinutes = sessionMinutes;
       }
     } else {
-      const sortedPings = [...session.thoughts].sort(
+      const sortedPings = [...activeThoughts].sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
       const sessionStartTime = new Date(session.start_time).getTime();
@@ -163,9 +207,9 @@ export function computeAnalyticsSummary(
     subj.net += netMins;
 
     // Thoughts aggregation
-    if (session.thoughts && session.thoughts.length > 0) {
-      totalThoughtsCount += session.thoughts.length;
-      session.thoughts.forEach((t) => {
+    if (activeThoughts.length > 0) {
+      totalThoughtsCount += activeThoughts.length;
+      activeThoughts.forEach((t) => {
         const cat = t.category || "other";
         const entry = categoryMap.get(cat) || { count: 0, minutes: 0 };
         entry.count += 1;
@@ -188,12 +232,30 @@ export function computeAnalyticsSummary(
         }
       });
     } else if (lostMins > 0) {
-      // If individual thoughts are unpopulated from DB, capture the lost distraction time in 'other'
-      const cat = "other";
-      const entry = categoryMap.get(cat) || { count: 0, minutes: 0 };
+      // Attribute to inferred category from AI diagnosis and count
+      const count = inferredCount > 0 ? inferredCount : Math.max(1, Math.round(lostMins / 2));
+      totalThoughtsCount += count;
+      const entry = categoryMap.get(inferredCategory) || { count: 0, minutes: 0 };
+      entry.count += count;
       entry.minutes += lostMins;
       totalThoughtMinutes += lostMins;
-      categoryMap.set(cat, entry);
+      categoryMap.set(inferredCategory, entry);
+
+      const titleLabel = inferredCategory === "random_idea" ? "Random Idea / Stray Thought"
+        : inferredCategory === "phone_social" ? "Phone / Social Distraction"
+        : inferredCategory === "hunger_snack" ? "Snack / Water Break"
+        : inferredCategory === "anxiety_stress" ? "Mind Wandering / Daydreaming"
+        : inferredCategory === "urgent_chore" ? "Urgent Errand / Chore"
+        : "Context Switching Detour";
+
+      const tEntry = thoughtTitleMap.get(titleLabel) || {
+        count: 0,
+        totalMinutes: 0,
+        category: inferredCategory,
+      };
+      tEntry.count += count;
+      tEntry.totalMinutes += lostMins;
+      thoughtTitleMap.set(titleLabel, tEntry);
     }
 
     // Daily trends

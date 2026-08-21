@@ -48,6 +48,7 @@ export interface AIDebrief {
   actionableTips: string[];
   recommendedBreakMinutes: number;
   nextSessionTopicSuggestion?: string;
+  loggedThoughts?: Thought[];
 }
 
 export interface StudySession {
