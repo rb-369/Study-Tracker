@@ -22,12 +22,18 @@ import { SessionStartModal } from "@/components/session/SessionStartModal";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, signOut } = useStudyStore();
+  const { user, isAuthenticated, isLoading, signOut, updateUserProfile } = useStudyStore();
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   const [dailyTargetMins, setDailyTargetMins] = useState(user?.target_daily_minutes || 180);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+
+  React.useEffect(() => {
+    if (user?.target_daily_minutes) {
+      setDailyTargetMins(user.target_daily_minutes);
+    }
+  }, [user?.target_daily_minutes]);
 
   React.useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -52,11 +58,10 @@ export default function SettingsPage() {
     );
   }
 
-  const handleSaveGoal = (e: React.FormEvent) => {
+  const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (user) {
-      user.target_daily_minutes = dailyTargetMins;
-      localStorage.setItem("studyflow_user", JSON.stringify(user));
+      await updateUserProfile({ target_daily_minutes: dailyTargetMins });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2000);
     }
@@ -128,9 +133,9 @@ export default function SettingsPage() {
               <div className="relative">
                 <input
                   type="number"
-                  min="30"
-                  max="720"
-                  step="15"
+                  min="10"
+                  max="1440"
+                  step="5"
                   value={dailyTargetMins}
                   onChange={(e) => setDailyTargetMins(parseInt(e.target.value) || 180)}
                   className="w-36 py-2 px-3 rounded-xl bg-surface-subtle border border-border text-sm font-mono text-white focus:outline-none focus:border-focus"

@@ -1,5 +1,23 @@
 import { AIDebrief, Thought, WeeklyAIReport } from "@/types";
 
+function extractJson<T>(rawText: string): T | null {
+  if (!rawText) return null;
+  try {
+    return JSON.parse(rawText);
+  } catch {}
+  try {
+    const cleaned = rawText.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim();
+    return JSON.parse(cleaned);
+  } catch {}
+  try {
+    const match = rawText.match(/(\{[\s\S]*\})/);
+    if (match) {
+      return JSON.parse(match[1]);
+    }
+  } catch {}
+  return null;
+}
+
 export async function generateAIDebriefWithLLM(params: {
   topic: string;
   subjectName: string;
@@ -71,10 +89,8 @@ You MUST respond with valid JSON only, strictly matching this schema:
       if (response.ok) {
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
-          return parsed as AIDebrief;
-        }
+        const parsed = extractJson<AIDebrief>(content);
+        if (parsed) return parsed;
       }
     } catch (err) {
       console.warn("OpenRouter API request failed, falling back to Gemini:", err);
@@ -100,10 +116,8 @@ You MUST respond with valid JSON only, strictly matching this schema:
       if (response.ok) {
         const data = await response.json();
         const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (content) {
-          const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
-          return parsed as AIDebrief;
-        }
+        const parsed = extractJson<AIDebrief>(content);
+        if (parsed) return parsed;
       }
     } catch (err) {
       console.warn("Gemini API request failed, falling back to heuristic engine:", err);
@@ -154,29 +168,138 @@ export async function generateWeeklyReportWithLLM(params: {
     subjectAllocation,
   } = params;
 
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const focusPct = Math.round(overallFocusRatio * 100);
+
+  const prompt = `You are StudyFlow's Executive Deep Work & Cognitive Performance Analyst.
+Generate a comprehensive weekly study review based on the following real telemetry data:
+
+WEEKLY TELEMETRY:
+- Completed Study Sessions: ${sessionsCount}
+- Gross Clock Time: ${totalGrossHours.toFixed(1)} hours
+- Net Focused Deep Work: ${totalNetHours.toFixed(1)} hours
+- Overall Focus Ratio: ${focusPct}%
+- Top Distractions / Attention Leaks:
+${topDistractions.length > 0 ? topDistractions.map((d, i) => `  ${i + 1}. ${d.category}: ${d.count} occurrences (${d.totalMinutes} mins lost)`).join("\n") : "  None recorded"}
+- Subject Time Allocations:
+${subjectAllocation.length > 0 ? subjectAllocation.map((s, i) => `  ${i + 1}. ${s.name}: ${s.hours} hours net focus`).join("\n") : "  General Study"}
+
+OUTPUT FORMAT:
+Respond with valid JSON only matching this schema:
+{
+  "weekStarting": "${new Date(Date.now() - 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" })}",
+  "totalGrossHours": ${totalGrossHours},
+  "totalNetHours": ${totalNetHours},
+  "overallFocusRatio": ${overallFocusRatio},
+  "peakFocusDay": "e.g. Wednesday & Saturday",
+  "peakFocusHour": "e.g. 8:00 PM - 10:30 PM",
+  "topDistractionCategory": "${topDistractions[0]?.category || 'Phone & Notifications'}",
+  "flowStateAchievementPercentage": ${focusPct},
+  "executiveSummary": "2-3 sentences summarizing weekly deep work volume, cognitive stamina, and pacing efficacy.",
+  "strengths": [
+    "Specific observed cognitive strength 1",
+    "Specific observed cognitive strength 2",
+    "Specific observed cognitive strength 3"
+  ],
+  "growthAreas": [
+    "Specific attention leak / growth area 1",
+    "Specific attention leak / growth area 2"
+  ],
+  "strategicRecommendations": [
+    "Actionable protocol 1 for syllabus pacing and deep focus",
+    "Actionable protocol 2 for distraction mitigation",
+    "Actionable protocol 3 for circadian study timing"
+  ]
+}`;
+
+  // 1. Try OpenRouter
+  if (openRouterKey && !openRouterKey.includes("placeholder")) {
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "HTTP-Referer": "https://studyflow.ai",
+          "X-Title": "StudyFlow AI Weekly Review",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-001",
+          messages: [
+            { role: "system", content: "You are an executive Deep Work & Cognitive Performance Coach. Always return pure JSON." },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+        const parsed = extractJson<WeeklyAIReport>(content);
+        if (parsed) return parsed;
+      }
+    } catch (err) {
+      console.warn("OpenRouter Weekly Report error, falling back:", err);
+    }
+  }
+
+  // 2. Fallback to Gemini
+  if (geminiKey && !geminiKey.includes("placeholder")) {
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${prompt}\nReturn strictly JSON.` }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.3,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parsed = extractJson<WeeklyAIReport>(content);
+        if (parsed) return parsed;
+      }
+    } catch (err) {
+      console.warn("Gemini Weekly Report error, falling back:", err);
+    }
+  }
+
+  // 3. Dynamic Heuristic Synthesizer
+  const topCatName = topDistractions[0]?.category || "Phone & Notifications";
+  const primarySubj = subjectAllocation[0]?.name || "Core Subjects";
+
   return {
     weekStarting: new Date(Date.now() - 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     totalGrossHours,
     totalNetHours,
     overallFocusRatio,
-    peakFocusDay: "Tuesday & Thursday",
+    peakFocusDay: sessionsCount >= 3 ? "Mid-week & Weekend" : "Active Study Days",
     peakFocusHour: "7:00 PM - 9:30 PM",
-    topDistractionCategory: topDistractions[0]?.category || "Phone & Notifications",
-    flowStateAchievementPercentage: Math.round(overallFocusRatio * 100),
-    executiveSummary: `You logged ${totalGrossHours.toFixed(1)} gross study hours this week across ${sessionsCount} sessions, preserving ${totalNetHours.toFixed(1)} hours of true focused attention (${(overallFocusRatio * 100).toFixed(0)}% Focus Ratio).`,
+    topDistractionCategory: topCatName,
+    flowStateAchievementPercentage: focusPct,
+    executiveSummary: `You logged ${totalGrossHours.toFixed(1)} gross study hours across ${sessionsCount} session${sessionsCount === 1 ? '' : 's'}, preserving ${totalNetHours.toFixed(1)} hours of true focused attention (${focusPct}% Focus Ratio).`,
     strengths: [
       `High consistency with ${sessionsCount} dedicated study blocks completed.`,
-      `Evening sessions demonstrated your highest resistance to mind pings and distraction triggers.`,
-      `Strong subject devotion to ${subjectAllocation[0]?.name || "Core Subjects"}.`
+      `Resilience in maintaining deep flow state across study sessions.`,
+      `Targeted devotion to ${primarySubj}.`
     ],
     growthAreas: [
-      `Distractions clustered around ${topDistractions[0]?.category || "phone checks"} during longer (>60m) blocks.`,
-      `Mid-afternoon focus dip between 2:00 PM and 4:00 PM.`
+      `Attention interruptions primarily triggered by ${topCatName}.`,
+      `Need for structured 5-10 minute buffer intervals between multi-hour study sprints.`
     ],
     strategicRecommendations: [
-      "Batch phone and message checks strictly into designated 15-minute inter-session breaks.",
+      `Batch ${topCatName.toLowerCase()} checks strictly into designated 15-minute inter-session breaks.`,
       "Cap intensive problem-solving sessions at 75 minutes before taking an active physical break.",
-      "Schedule your hardest conceptual units for your peak cognitive window (7:00 PM - 9:30 PM)."
+      `Prioritize difficult ${primarySubj} topics during your peak cognitive energy windows.`
     ]
   };
 }

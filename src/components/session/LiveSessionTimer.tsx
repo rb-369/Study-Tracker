@@ -52,6 +52,9 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
+      if (isPingModalOpen || showConfirmAbandon) {
+        return;
+      }
 
       if (e.key === "t" || e.key === "T" || e.key === "m" || e.key === "M") {
         e.preventDefault();
@@ -68,14 +71,16 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTimer.isRunning, pauseSession, resumeSession]);
+  }, [activeTimer.isRunning, pauseSession, resumeSession, isPingModalOpen, showConfirmAbandon]);
 
   if (!activeSession) return null;
 
   const grossSeconds = activeTimer.elapsedSeconds;
   const isPomodoro = activeTimer.type === "pomodoro";
   const pomodoroTargetSeconds = (activeTimer.targetMinutes || 25) * 60;
+  const isPomodoroComplete = isPomodoro && grossSeconds >= pomodoroTargetSeconds;
   const pomodoroRemainingSeconds = Math.max(0, pomodoroTargetSeconds - grossSeconds);
+  const pomodoroOvertimeSeconds = Math.max(0, grossSeconds - pomodoroTargetSeconds);
   const pomodoroPercent = Math.min(100, Math.round((grossSeconds / pomodoroTargetSeconds) * 100));
 
   const thoughtsCount = activeSession.thoughts?.length || 0;
@@ -132,14 +137,29 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
       <div className="px-6 py-8 sm:py-10 flex flex-col items-center justify-center">
         {/* Digital Clock */}
         <div className="text-center select-none">
-          <div className="font-mono text-6xl sm:text-8xl font-black tracking-tight text-white tabular-nums drop-shadow-sm">
+          <div className={`font-mono text-6xl sm:text-8xl font-black tracking-tight tabular-nums drop-shadow-sm transition-colors ${
+            isPomodoroComplete ? "text-emerald-400" : "text-white"
+          }`}>
             {isPomodoro
-              ? formatSecondsToTimer(pomodoroRemainingSeconds)
+              ? isPomodoroComplete
+                ? `+${formatSecondsToTimer(pomodoroOvertimeSeconds)}`
+                : formatSecondsToTimer(pomodoroRemainingSeconds)
               : formatSecondsToTimer(grossSeconds)}
           </div>
-          <p className="text-xs uppercase tracking-widest text-zinc-500 font-mono mt-2">
-            {isPomodoro ? `Pomodoro Sprint (${pomodoroPercent}% Complete)` : "Active Session Clock"}
-          </p>
+          <div className="flex items-center justify-center gap-1.5 mt-2">
+            {isPomodoroComplete && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono animate-pulse">
+                TARGET REACHED
+              </span>
+            )}
+            <p className="text-xs uppercase tracking-widest text-zinc-500 font-mono">
+              {isPomodoro
+                ? isPomodoroComplete
+                  ? `Overtime Flow (${pomodoroPercent}% of ${activeTimer.targetMinutes}m target)`
+                  : `Pomodoro Sprint (${pomodoroPercent}% Complete)`
+                : "Active Session Clock"}
+            </p>
+          </div>
         </div>
 
         {/* Real-time Focus Split Telemetry */}

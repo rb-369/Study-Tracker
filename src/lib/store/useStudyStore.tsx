@@ -33,6 +33,7 @@ interface StudyContextType {
   addThought: (title: string, category: ThoughtCategory, approxDurationMinutes: number, notes?: string) => void;
   endSession: (sessionNotes?: string) => Promise<AIDebrief | null>;
   abandonSession: () => void;
+  updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createSubject: (
     nameOrObj: string | { name: string; color?: string; icon?: string; target_weekly_hours?: number },
     color?: string,
@@ -360,14 +361,17 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
 
     sortedPings.forEach((p) => {
       const pTime = new Date(p.timestamp).getTime();
-      const gapSec = Math.floor((pTime - prevTime) / 1000);
+      const gapSec = Math.max(0, Math.floor((pTime - prevTime) / 1000));
       if (gapSec > maxGap) maxGap = gapSec;
-      prevTime = pTime + (p.approx_duration_minutes * 60 * 1000);
+      prevTime = pTime + ((p.approx_duration_minutes || 0) * 60 * 1000);
     });
 
-    const finalGap = Math.floor((Date.now() - prevTime) / 1000);
+    const nowTimestamp = activeTimer.isRunning 
+      ? Date.now() 
+      : sessionStart + (activeTimer.elapsedSeconds * 1000);
+    const finalGap = Math.max(0, Math.floor((nowTimestamp - prevTime) / 1000));
     if (finalGap > maxGap) maxGap = finalGap;
-    currentLongestStreakSeconds = Math.max(0, maxGap);
+    currentLongestStreakSeconds = Math.min(activeTimer.elapsedSeconds, Math.max(0, maxGap));
   }
 
   // --- ACTIONS ---
@@ -678,6 +682,31 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
   };
 
+  const updateUserProfile = async (updates: Partial<UserProfile>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
+      try {
+        await supabase
+          .from("profiles")
+          .update({
+            target_daily_minutes: updates.target_daily_minutes,
+            full_name: updates.full_name,
+            avatar_url: updates.avatar_url,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id);
+      } catch (err) {
+        console.error("Failed to update profile in Supabase:", err);
+      }
+    }
+  };
+
   const createSubject = async (
     nameOrObj: string | { name: string; color?: string; icon?: string; target_weekly_hours?: number },
     color: string = "#10b981",
@@ -800,6 +829,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         addThought,
         endSession,
         abandonSession,
+        updateUserProfile,
         createSubject,
         updateSubject,
         deleteSubject,

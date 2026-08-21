@@ -28,6 +28,13 @@ export function SessionStartModal({ isOpen, onClose }: SessionStartModalProps) {
   const [sessionType, setSessionType] = useState<SessionType>("stopwatch");
   const [targetMinutes, setTargetMinutes] = useState<number>(25);
 
+  // Sync selectedSubjectId when subjects load
+  React.useEffect(() => {
+    if (!selectedSubjectId && subjects.length > 0) {
+      setSelectedSubjectId(subjects[0].id);
+    }
+  }, [subjects, selectedSubjectId]);
+
   // Quick inline subject creation if subjects list is empty
   const [isCreatingInline, setIsCreatingInline] = useState(false);
   const [newSubjName, setNewSubjName] = useState("");

@@ -70,8 +70,34 @@ export function computeAnalyticsSummary(sessions: StudySession[]): AnalyticsSumm
     );
     const netMins = Math.max(0, sessionMinutes - thoughtMinutesSum);
 
-    if (session.thoughts && session.thoughts.length === 0 && sessionMinutes > maxDeepWorkMinutes) {
-      maxDeepWorkMinutes = sessionMinutes;
+    // Calculate longest continuous uninterrupted focus interval within this session
+    if (!session.thoughts || session.thoughts.length === 0) {
+      if (sessionMinutes > maxDeepWorkMinutes) {
+        maxDeepWorkMinutes = sessionMinutes;
+      }
+    } else {
+      const sortedPings = [...session.thoughts].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      const sessionStartTime = new Date(session.start_time).getTime();
+      const sessionEndTime = session.end_time 
+        ? new Date(session.end_time).getTime() 
+        : sessionStartTime + session.gross_duration_seconds * 1000;
+
+      let prevWindowEnd = sessionStartTime;
+      sortedPings.forEach((p) => {
+        const pingStart = new Date(p.timestamp).getTime();
+        const gapMins = Math.max(0, Math.floor((pingStart - prevWindowEnd) / (1000 * 60)));
+        if (gapMins > maxDeepWorkMinutes) {
+          maxDeepWorkMinutes = gapMins;
+        }
+        prevWindowEnd = pingStart + (p.approx_duration_minutes * 60 * 1000);
+      });
+
+      const finalGapMins = Math.max(0, Math.floor((sessionEndTime - prevWindowEnd) / (1000 * 60)));
+      if (finalGapMins > maxDeepWorkMinutes) {
+        maxDeepWorkMinutes = finalGapMins;
+      }
     }
 
     // Subject breakdown
@@ -98,7 +124,7 @@ export function computeAnalyticsSummary(sessions: StudySession[]): AnalyticsSumm
       });
     }
 
-    // Daily trends
+    // Daily trends (for 7-day chart)
     const sessionDate = new Date(session.start_time).toISOString().split("T")[0];
     if (dateMap.has(sessionDate)) {
       const day = dateMap.get(sessionDate)!;
@@ -127,11 +153,38 @@ export function computeAnalyticsSummary(sessions: StudySession[]): AnalyticsSumm
   const totalNetMinutes = Math.round(totalNetSeconds / 60);
   const overallFocusRatio = totalGrossSeconds > 0 ? totalNetSeconds / totalGrossSeconds : 1;
 
-  // Streak calculation
-  const uniqueDatesWithStudy = Array.from(dateMap.entries())
-    .filter(([_, data]) => data.gross > 0)
-    .map(([date]) => date);
-  const currentStreakDays = uniqueDatesWithStudy.length;
+  // Consecutive Days Streak Calculation (across all historical completed sessions)
+  const allActiveDateSet = new Set<string>();
+  completed.forEach((s) => {
+    const dStr = new Date(s.start_time).toISOString().split("T")[0];
+    allActiveDateSet.add(dStr);
+  });
+
+  let currentStreakDays = 0;
+  const todayDateStr = new Date().toISOString().split("T")[0];
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayDateStr = yesterday.toISOString().split("T")[0];
+
+  // If user studied today or yesterday, count backwards consecutive streak
+  const checkStartDate = allActiveDateSet.has(todayDateStr)
+    ? new Date()
+    : allActiveDateSet.has(yesterdayDateStr)
+    ? yesterday
+    : null;
+
+  if (checkStartDate) {
+    let checkDate = new Date(checkStartDate);
+    while (true) {
+      const dateStr = checkDate.toISOString().split("T")[0];
+      if (allActiveDateSet.has(dateStr)) {
+        currentStreakDays += 1;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
 
   const subjectWiseMinutes = Array.from(subjectMap.entries()).map(([id, data]) => ({
     subjectId: id,
@@ -185,7 +238,7 @@ export function computeAnalyticsSummary(sessions: StudySession[]): AnalyticsSumm
     completedSessionsCount: completed.length,
     totalThoughtsLogged: totalThoughtsCount,
     avgSessionMinutes: completed.length > 0 ? Math.round(totalGrossMinutes / completed.length) : 0,
-    longestDeepWorkStreakMinutes: maxDeepWorkMinutes > 0 ? maxDeepWorkMinutes : 45,
+    longestDeepWorkStreakMinutes: maxDeepWorkMinutes > 0 ? maxDeepWorkMinutes : completed.length > 0 ? Math.round(totalNetMinutes / completed.length) : 0,
     currentStreakDays,
     subjectWiseMinutes,
     categoryWiseDistractions,
