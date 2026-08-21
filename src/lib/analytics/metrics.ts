@@ -98,11 +98,15 @@ export function computeAnalyticsSummary(
     totalNetSeconds += session.net_focus_seconds;
 
     const sessionMinutes = Math.round(session.gross_duration_seconds / 60);
-    const thoughtMinutesSum = (session.thoughts || []).reduce(
+    const recordedThoughtMins = (session.thoughts || []).reduce(
       (acc, t) => acc + (t.approx_duration_minutes || 0),
       0
     );
-    const netMins = Math.max(0, sessionMinutes - thoughtMinutesSum);
+    // Use true net focus recorded in session, falling back to subtraction
+    const netMins = session.net_focus_seconds > 0
+      ? Math.round(session.net_focus_seconds / 60)
+      : Math.max(0, sessionMinutes - recordedThoughtMins);
+    const lostMins = Math.max(0, sessionMinutes - netMins);
     const sessionScore = session.focus_score || calculateFocusScore(session.gross_duration_seconds, session.net_focus_seconds, session.thoughts);
     totalFocusScoreSum += sessionScore;
 
@@ -159,7 +163,7 @@ export function computeAnalyticsSummary(
     subj.net += netMins;
 
     // Thoughts aggregation
-    if (session.thoughts) {
+    if (session.thoughts && session.thoughts.length > 0) {
       totalThoughtsCount += session.thoughts.length;
       session.thoughts.forEach((t) => {
         const cat = t.category || "other";
@@ -183,6 +187,13 @@ export function computeAnalyticsSummary(
           thoughtTitleMap.set(cleanTitle, tEntry);
         }
       });
+    } else if (lostMins > 0) {
+      // If individual thoughts are unpopulated from DB, capture the lost distraction time in 'other'
+      const cat = "other";
+      const entry = categoryMap.get(cat) || { count: 0, minutes: 0 };
+      entry.minutes += lostMins;
+      totalThoughtMinutes += lostMins;
+      categoryMap.set(cat, entry);
     }
 
     // Daily trends

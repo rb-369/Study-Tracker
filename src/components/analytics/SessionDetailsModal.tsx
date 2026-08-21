@@ -16,7 +16,9 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
   const grossMins = Math.round(session.gross_duration_seconds / 60);
   const netMins = Math.round(session.net_focus_seconds / 60);
   const thoughts = session.thoughts || [];
-  const totalThoughtMins = thoughts.reduce((acc, t) => acc + (t.approx_duration_minutes || 0), 0);
+  const recordedThoughtMins = thoughts.reduce((acc, t) => acc + (t.approx_duration_minutes || 0), 0);
+  const lostMins = Math.max(0, grossMins - netMins);
+  const totalThoughtMins = Math.max(recordedThoughtMins, lostMins);
   const focusRatio = session.gross_duration_seconds > 0
     ? Math.round((session.net_focus_seconds / session.gross_duration_seconds) * 100)
     : 100;
@@ -125,9 +127,15 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
           </div>
 
           {thoughts.length === 0 ? (
-            <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center text-xs text-emerald-400/80">
-              ✨ Pure uninterrupted focus — zero mind pings logged during this session!
-            </div>
+            lostMins > 0 ? (
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center text-xs text-amber-400/80">
+                ⚡ ~{lostMins}m of context switching / distraction time was deducted during this study session.
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center text-xs text-emerald-400/80">
+                ✨ Pure uninterrupted focus — zero mind pings logged during this session!
+              </div>
+            )
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {thoughts.map((t, idx) => {

@@ -247,6 +247,9 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      let fetchedSessions: StudySession[] = [];
+
+      // 1. Fetch sessions from Supabase
       const { data: sessData, error: sessErr } = await supabase
         .from('study_sessions')
         .select('*, thoughts(*), subject:subjects(*)')
@@ -254,12 +257,66 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         .order('start_time', { ascending: false });
 
       if (sessErr) {
-        console.error("Error loading sessions from Supabase:", sessErr);
+        console.warn("Joined sessions fetch warning, attempting fallback:", sessErr);
+        const { data: fallbackSess } = await supabase
+          .from('study_sessions')
+          .select('*, subject:subjects(*)')
+          .eq('user_id', userId)
+          .order('start_time', { ascending: false });
+        if (fallbackSess) {
+          fetchedSessions = fallbackSess;
+        }
+      } else if (sessData) {
+        fetchedSessions = sessData;
       }
 
-      if (sessData && sessData.length > 0) {
-        setSessions(sessData);
-        localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(sessData));
+      // 2. Fetch thoughts table directly and attach to ensure no lost mind pings
+      try {
+        const { data: allThoughts, error: thoughtsErr } = await supabase
+          .from('thoughts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: true });
+
+        if (!thoughtsErr && allThoughts && allThoughts.length > 0) {
+          const thoughtsBySession = new Map<string, Thought[]>();
+          allThoughts.forEach((t: any) => {
+            if (!thoughtsBySession.has(t.session_id)) {
+              thoughtsBySession.set(t.session_id, []);
+            }
+            thoughtsBySession.get(t.session_id)!.push(t);
+          });
+
+          fetchedSessions = fetchedSessions.map((s) => ({
+            ...s,
+            thoughts: thoughtsBySession.get(s.id) || s.thoughts || [],
+          }));
+        }
+      } catch (tErr) {
+        console.warn("Direct thoughts query fallback:", tErr);
+      }
+
+      if (fetchedSessions.length > 0) {
+        // Merge with local storage sessions so any locally recorded thoughts are preserved
+        setSessions((prev) => {
+          const savedLocal = typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS) : null;
+          const localSessions: StudySession[] = prev.length > 0 ? prev : (savedLocal ? JSON.parse(savedLocal) : []);
+          
+          const merged = fetchedSessions.map((remoteSess) => {
+            const localMatch = localSessions.find((p) => p.id === remoteSess.id);
+            const remoteThoughts = remoteSess.thoughts || [];
+            const localThoughts = localMatch?.thoughts || [];
+
+            // If remote has 0 thoughts but local recorded thoughts, keep local thoughts!
+            if (remoteThoughts.length === 0 && localThoughts.length > 0) {
+              return { ...remoteSess, thoughts: localThoughts };
+            }
+            return remoteSess;
+          });
+
+          localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(merged));
+          return merged;
+        });
       } else {
         const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
         if (savedSessions) {
@@ -631,7 +688,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     // Save to Supabase if authenticated
     if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
       try {
-        await supabase.from("study_sessions").insert({
+        const { error: sessErr } = await supabase.from("study_sessions").insert({
           id: completedSession.id,
           user_id: user.id,
           subject_id: completedSession.subject_id,
@@ -646,9 +703,13 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           ai_debrief: completedSession.ai_debrief,
         });
 
+        if (sessErr) {
+          console.error("Supabase study_sessions insert error:", sessErr);
+        }
+
         // Insert thoughts
         if (completedSession.thoughts && completedSession.thoughts.length > 0) {
-          await supabase.from("thoughts").insert(
+          const { error: thoughtErr } = await supabase.from("thoughts").insert(
             completedSession.thoughts.map((t) => ({
               id: t.id,
               session_id: completedSession.id,
@@ -660,6 +721,9 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
               notes: t.notes,
             }))
           );
+          if (thoughtErr) {
+            console.error("Supabase thoughts insert error:", thoughtErr);
+          }
         }
       } catch (err) {
         console.error("Failed to sync session to Supabase:", err);
