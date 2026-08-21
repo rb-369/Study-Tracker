@@ -30,12 +30,12 @@ export function SubjectManager({ onClose }: SubjectManagerProps) {
   // Create form state
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLOR_OPTIONS[0]);
-  const [targetHours, setTargetHours] = useState<number>(10);
+  const [targetHours, setTargetHours] = useState<number | string>(10);
 
   // Edit form state
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState(COLOR_OPTIONS[0]);
-  const [editTargetHours, setEditTargetHours] = useState<number>(10);
+  const [editTargetHours, setEditTargetHours] = useState<number | string>(10);
 
   const handleOpenCreate = () => {
     setName("");
@@ -54,11 +54,13 @@ export function SubjectManager({ onClose }: SubjectManagerProps) {
   const handleSaveCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    const parsedHours = typeof targetHours === "number" ? targetHours : parseInt(targetHours, 10);
+    const finalHours = isNaN(parsedHours) || parsedHours <= 0 ? 10 : parsedHours;
     await createSubject({
       name: name.trim(),
       color,
       icon: "BookOpen",
-      target_weekly_hours: targetHours,
+      target_weekly_hours: finalHours,
     });
     setIsCreating(false);
   };
@@ -66,10 +68,12 @@ export function SubjectManager({ onClose }: SubjectManagerProps) {
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSubject || !editName.trim()) return;
+    const parsedHours = typeof editTargetHours === "number" ? editTargetHours : parseInt(editTargetHours, 10);
+    const finalHours = isNaN(parsedHours) || parsedHours <= 0 ? 10 : parsedHours;
     await updateSubject(editingSubject.id, {
       name: editName.trim(),
       color: editColor,
-      target_weekly_hours: editTargetHours,
+      target_weekly_hours: finalHours,
     });
     setEditingSubject(null);
   };
@@ -174,7 +178,20 @@ export function SubjectManager({ onClose }: SubjectManagerProps) {
                 min="1"
                 max="100"
                 value={targetHours}
-                onChange={(e) => setTargetHours(parseInt(e.target.value) || 1)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "") {
+                    setTargetHours("");
+                  } else {
+                    const num = parseInt(val, 10);
+                    setTargetHours(isNaN(num) ? "" : num);
+                  }
+                }}
+                onBlur={() => {
+                  if (targetHours === "" || Number(targetHours) < 1) {
+                    setTargetHours(10);
+                  }
+                }}
                 className="w-full py-2 px-3 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 font-mono"
               />
             </div>
@@ -337,7 +354,20 @@ export function SubjectManager({ onClose }: SubjectManagerProps) {
                   min="1"
                   max="100"
                   value={editTargetHours}
-                  onChange={(e) => setEditTargetHours(parseInt(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setEditTargetHours("");
+                    } else {
+                      const num = parseInt(val, 10);
+                      setEditTargetHours(isNaN(num) ? "" : num);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (editTargetHours === "" || Number(editTargetHours) < 1) {
+                      setEditTargetHours(10);
+                    }
+                  }}
                   className="w-full py-2 px-3 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>

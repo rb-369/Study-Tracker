@@ -25,7 +25,7 @@ export default function SettingsPage() {
   const { user, isAuthenticated, isLoading, signOut, updateUserProfile } = useStudyStore();
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
-  const [dailyTargetMins, setDailyTargetMins] = useState(user?.target_daily_minutes || 180);
+  const [dailyTargetMins, setDailyTargetMins] = useState<number | string>(user?.target_daily_minutes || 180);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
@@ -61,7 +61,9 @@ export default function SettingsPage() {
   const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (user) {
-      await updateUserProfile({ target_daily_minutes: dailyTargetMins });
+      const parsedMins = typeof dailyTargetMins === "number" ? dailyTargetMins : parseInt(dailyTargetMins, 10);
+      const finalMins = isNaN(parsedMins) || parsedMins < 10 ? 180 : parsedMins;
+      await updateUserProfile({ target_daily_minutes: finalMins });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2000);
     }
@@ -137,10 +139,23 @@ export default function SettingsPage() {
                   max="1440"
                   step="5"
                   value={dailyTargetMins}
-                  onChange={(e) => setDailyTargetMins(parseInt(e.target.value) || 180)}
-                  className="w-36 py-2 px-3 rounded-xl bg-surface-subtle border border-border text-sm font-mono text-white focus:outline-none focus:border-focus"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setDailyTargetMins("");
+                    } else {
+                      const num = parseInt(val, 10);
+                      setDailyTargetMins(isNaN(num) ? "" : num);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (dailyTargetMins === "" || Number(dailyTargetMins) < 10) {
+                      setDailyTargetMins(180);
+                    }
+                  }}
+                  className="w-36 py-2 px-3 rounded-xl bg-zinc-900 border border-zinc-800 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-slate-500">mins</span>
+                <span className="absolute right-3 top-2.5 text-xs text-zinc-500">mins</span>
               </div>
 
               <button
