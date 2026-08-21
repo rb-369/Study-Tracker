@@ -153,7 +153,7 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
                     <div className="flex items-center gap-3 font-mono text-zinc-400 text-[11px] flex-shrink-0">
                       <span>{pingTime}</span>
                       <span className="text-amber-400 font-bold">
-                        -{t.approx_duration_minutes}m
+                        -{t.approx_duration_minutes === 0.5 ? "30s" : `${t.approx_duration_minutes}m`}
                       </span>
                     </div>
                   </div>

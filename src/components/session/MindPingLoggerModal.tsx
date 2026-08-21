@@ -22,7 +22,7 @@ const PRESET_TOPICS = [
   "Browser tab rabbit hole",
 ];
 
-const DURATION_PRESETS = [1, 2, 3, 5, 10, 15];
+const DURATION_PRESETS = [0.5, 1, 2, 3, 5, 10, 15];
 
 export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLoggerModalProps) {
   const [title, setTitle] = useState("");
@@ -164,11 +164,11 @@ export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLogge
                 Duration Subtracted
               </label>
               <span className="text-xs font-mono font-bold text-amber-400">
-                {customDuration ? `${customDuration}m` : `${duration}m`}
+                {customDuration ? `${customDuration}m` : duration === 0.5 ? "30s" : `${duration}m`}
               </span>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {DURATION_PRESETS.map((d) => (
                 <button
                   key={d}
@@ -183,7 +183,7 @@ export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLogge
                       : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  {d}m
+                  {d === 0.5 ? "30s" : `${d}m`}
                 </button>
               ))}
               <input

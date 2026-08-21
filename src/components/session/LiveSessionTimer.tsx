@@ -40,10 +40,11 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
   // Quick 1-tap categories to log without opening full modal
   const quickCategories = [
-    { key: "phone_social" as const, label: "Social / Phone", icon: "📱", minutes: 3 },
-    { key: "hunger_snack" as const, label: "Snack / Water", icon: "☕", minutes: 5 },
-    { key: "random_idea" as const, label: "Random Idea", icon: "💡", minutes: 2 },
-    { key: "anxiety_stress" as const, label: "Daydreaming", icon: "💭", minutes: 4 },
+    { id: "micro_30s", key: "phone_social" as const, label: "30s Micro Ping", icon: "⚡", minutes: 0.5, displayTime: "30s" },
+    { id: "social_3m", key: "phone_social" as const, label: "Social / Phone", icon: "📱", minutes: 3, displayTime: "+3m" },
+    { id: "snack_5m", key: "hunger_snack" as const, label: "Snack / Water", icon: "☕", minutes: 5, displayTime: "+5m" },
+    { id: "idea_2m", key: "random_idea" as const, label: "Random Idea", icon: "💡", minutes: 2, displayTime: "+2m" },
+    { id: "daydream_4m", key: "anxiety_stress" as const, label: "Daydreaming", icon: "💭", minutes: 4, displayTime: "+4m" },
   ];
 
   // Keyboard shortcut listener
@@ -253,10 +254,10 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           {quickCategories.map((cat) => (
             <button
-              key={cat.key}
+              key={cat.id}
               onClick={() => {
                 addThought(cat.label, cat.key, cat.minutes);
               }}
@@ -266,8 +267,8 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
                 <span className="text-xs">{cat.icon}</span>
                 <span className="text-xs font-medium text-zinc-300 truncate">{cat.label}</span>
               </div>
-              <span className="text-[10px] font-mono text-zinc-500 font-semibold">
-                +{cat.minutes}m
+              <span className="text-[10px] font-mono text-zinc-500 font-semibold flex-shrink-0 ml-1">
+                {cat.displayTime}
               </span>
             </button>
           ))}
@@ -291,7 +292,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
                   <span>{meta.icon}</span>
                   <span>{thought.title || meta.label}</span>
                   <span className="text-rose-400 font-mono font-medium text-[10px]">
-                    -{thought.approx_duration_minutes}m
+                    -{thought.approx_duration_minutes === 0.5 ? "30s" : `${thought.approx_duration_minutes}m`}
                   </span>
                 </div>
               );
