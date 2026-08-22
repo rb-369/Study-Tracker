@@ -51,10 +51,32 @@ export interface AIDebrief {
   loggedThoughts?: Thought[];
 }
 
+export type ExamGoalStatus = 'active' | 'completed' | 'archived';
+
+export interface SubjectAllocation {
+  subject_id: string;
+  target_hours: number;
+}
+
+export interface ExamGoal {
+  id: string;
+  user_id: string;
+  title: string;
+  target_date: string; // YYYY-MM-DD
+  target_total_hours: number;
+  subject_allocations: SubjectAllocation[];
+  color: string;
+  icon: string;
+  status: ExamGoalStatus;
+  notes?: string;
+  created_at: string;
+}
+
 export interface StudySession {
   id: string;
   user_id: string;
   subject_id: string;
+  goal_id?: string | null;
   topic: string;
   start_time: string;
   end_time: string | null;
@@ -68,6 +90,7 @@ export interface StudySession {
   thoughts?: Thought[];
   created_at: string;
   subject?: Subject;
+  goal?: ExamGoal;
 }
 
 export interface WeeklyAIReport {

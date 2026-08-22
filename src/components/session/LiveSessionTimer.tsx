@@ -13,7 +13,8 @@ import {
   CheckCircle,
   AlertCircle,
   TrendingUp,
-  X
+  X,
+  Target
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { formatSecondsToTimer, formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
@@ -33,6 +34,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
     abandonSession,
     netFocusSeconds,
     currentFocusRatio,
+    goals,
   } = useStudyStore();
 
   const [isPingModalOpen, setIsPingModalOpen] = useState(false);
@@ -76,6 +78,8 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
   if (!activeSession) return null;
 
+  const linkedGoal = activeSession.goal || (activeSession.goal_id ? goals.find((g) => g.id === activeSession.goal_id) : undefined);
+
   const grossSeconds = activeTimer.elapsedSeconds;
   const isPomodoro = activeTimer.type === "pomodoro";
   const pomodoroTargetSeconds = (activeTimer.targetMinutes || 25) * 60;
@@ -102,13 +106,19 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
             style={{ backgroundColor: activeSession.subject?.color || "#10b981" }}
           />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 {activeSession.subject?.name || "General Study"}
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
                 {activeTimer.type.toUpperCase()}
               </span>
+              {linkedGoal && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                  <Target className="w-3 h-3" />
+                  <span>{linkedGoal.title}</span>
+                </span>
+              )}
             </div>
             <h2 className="text-sm sm:text-base font-bold text-zinc-100 mt-0.5">
               {activeSession.topic}

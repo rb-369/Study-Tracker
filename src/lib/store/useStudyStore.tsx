@@ -1,8 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType } from "@/types";
-import { INITIAL_SUBJECTS, INITIAL_SESSIONS } from "./seedData";
+import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType, ExamGoal } from "@/types";
+import { INITIAL_SUBJECTS, INITIAL_SESSIONS, INITIAL_GOALS } from "./seedData";
 import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
 import { generateUUID } from "@/lib/utils";
@@ -20,6 +20,7 @@ interface StudyContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   subjects: Subject[];
+  goals: ExamGoal[];
   sessions: StudySession[];
   activeSession: StudySession | null;
   activeTimer: ActiveTimerState;
@@ -27,7 +28,7 @@ interface StudyContextType {
   currentFocusRatio: number;
   currentLongestStreakSeconds: number;
   // Actions
-  startSession: (subjectId: string, topic: string, type: SessionType, targetMinutes?: number) => void;
+  startSession: (subjectId: string, topic: string, type: SessionType, targetMinutes?: number, goalId?: string | null) => void;
   pauseSession: () => void;
   resumeSession: () => void;
   addThought: (title: string, category: ThoughtCategory, approxDurationMinutes: number, notes?: string) => void;
@@ -42,6 +43,12 @@ interface StudyContextType {
   ) => Promise<Subject>;
   updateSubject: (id: string, updates: Partial<Subject>) => Promise<void>;
   deleteSubject: (id: string) => Promise<void>;
+  createGoal: (goalData: Omit<ExamGoal, "id" | "user_id" | "created_at">) => Promise<ExamGoal>;
+  updateGoal: (id: string, updates: Partial<ExamGoal>) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  completeGoal: (id: string) => Promise<void>;
+  archiveGoal: (id: string) => Promise<void>;
+  linkSessionToGoal: (sessionId: string, goalId: string | null) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInAsDemoUser: () => void;
   signOut: () => Promise<void>;
@@ -51,6 +58,7 @@ const StudyContext = createContext<StudyContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY_USER = "studyflow_user";
 const LOCAL_STORAGE_KEY_SUBJECTS = "studyflow_subjects";
+const LOCAL_STORAGE_KEY_GOALS = "studyflow_goals";
 const LOCAL_STORAGE_KEY_SESSIONS = "studyflow_sessions";
 const LOCAL_STORAGE_KEY_ACTIVE = "studyflow_active_session";
 const LOCAL_STORAGE_KEY_TIMER = "studyflow_active_timer";
@@ -61,6 +69,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [goals, setGoals] = useState<ExamGoal[]>([]);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [activeSession, setActiveSession] = useState<StudySession | null>(null);
 
@@ -145,12 +154,14 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           // Check local storage for demo / guest session
           const savedUser = localStorage.getItem(LOCAL_STORAGE_KEY_USER);
           const savedSubjects = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
+          const savedGoals = localStorage.getItem(LOCAL_STORAGE_KEY_GOALS);
           const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
 
           if (savedUser) {
             setUser(JSON.parse(savedUser));
             setIsAuthenticated(true);
             setSubjects(savedSubjects ? JSON.parse(savedSubjects) : INITIAL_SUBJECTS);
+            setGoals(savedGoals ? JSON.parse(savedGoals) : INITIAL_GOALS);
             setSessions(savedSessions ? JSON.parse(savedSessions) : INITIAL_SESSIONS);
             restoreActiveSessionFromStorage();
           }
@@ -183,6 +194,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setIsAuthenticated(false);
         setSubjects([]);
+        setGoals([]);
         setSessions([]);
         setActiveSession(null);
         setActiveTimer({
@@ -194,6 +206,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         });
         localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
         localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
+        localStorage.removeItem(LOCAL_STORAGE_KEY_GOALS);
         localStorage.removeItem(LOCAL_STORAGE_KEY_SESSIONS);
         localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
         localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
@@ -208,6 +221,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   // Fetch Cloud data from Supabase
   const loadSupabaseData = async (userId: string) => {
     try {
+      // 1. Fetch Subjects
       const { data: subjData, error: subjErr } = await supabase
         .from('subjects')
         .select('*')
@@ -222,13 +236,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         setSubjects(subjData);
         localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjData));
       } else {
-        // Check local storage backup
         const savedSubjects = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
         if (savedSubjects) {
           const parsed = JSON.parse(savedSubjects);
           if (parsed && parsed.length > 0) {
             setSubjects(parsed);
-            // Sync local subjects to Supabase in background
             for (const s of parsed) {
               supabase.from('subjects').upsert({
                 id: s.id.length === 36 ? s.id : generateUUID(),
@@ -239,22 +251,70 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
                 target_weekly_hours: s.target_weekly_hours,
               }).then();
             }
-          } else {
-            setSubjects([]);
           }
-        } else {
-          setSubjects([]);
+        }
+      }
+
+      // 2. Fetch Goals
+      const { data: goalData, error: goalErr } = await supabase
+        .from('exam_goals')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (goalErr) {
+        console.error("Error loading goals from Supabase:", goalErr);
+      }
+
+      if (goalData && goalData.length > 0) {
+        setGoals(goalData);
+        localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(goalData));
+      } else {
+        const savedGoals = localStorage.getItem(LOCAL_STORAGE_KEY_GOALS);
+        if (savedGoals) {
+          const parsed = JSON.parse(savedGoals);
+          if (parsed && parsed.length > 0) {
+            setGoals(parsed);
+            for (const g of parsed) {
+              supabase.from('exam_goals').upsert({
+                id: g.id.length === 36 ? g.id : generateUUID(),
+                user_id: userId,
+                title: g.title,
+                target_date: g.target_date,
+                target_total_hours: g.target_total_hours,
+                subject_allocations: g.subject_allocations,
+                color: g.color,
+                icon: g.icon,
+                status: g.status,
+                notes: g.notes,
+              }).then();
+            }
+          }
         }
       }
 
       let fetchedSessions: StudySession[] = [];
 
-      // 1. Fetch sessions from Supabase
+      // 3. Fetch sessions from Supabase
       const { data: sessData, error: sessErr } = await supabase
         .from('study_sessions')
-        .select('*, thoughts(*), subject:subjects(*)')
+        .select('*, thoughts(*), subject:subjects(*), goal:exam_goals(*)')
         .eq('user_id', userId)
         .order('start_time', { ascending: false });
+
+      if (sessErr) {
+        console.warn("Joined sessions fetch warning, attempting fallback:", sessErr);
+        const { data: fallbackSess } = await supabase
+          .from('study_sessions')
+          .select('*, subject:subjects(*)')
+          .eq('user_id', userId)
+          .order('start_time', { ascending: false });
+        if (fallbackSess) {
+          fetchedSessions = fallbackSess;
+        }
+      } else if (sessData) {
+        fetchedSessions = sessData;
+      }
 
       if (sessErr) {
         console.warn("Joined sessions fetch warning, attempting fallback:", sessErr);
@@ -354,12 +414,18 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Sync subjects & sessions to local storage
+  // Sync subjects, goals & sessions to local storage
   useEffect(() => {
     if (subjects.length > 0) {
       localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
     }
   }, [subjects]);
+
+  useEffect(() => {
+    if (goals.length > 0) {
+      localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(goals));
+    }
+  }, [goals]);
 
   useEffect(() => {
     if (sessions.length > 0) {
@@ -482,9 +548,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     setUser(demoUser);
     setIsAuthenticated(true);
     setSubjects([]);
+    setGoals([]);
     setSessions([]);
     localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(demoUser));
     localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify([]));
     localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify([]));
     document.cookie = "studyflow_demo_user=true; path=/; max-age=604800";
     restoreActiveSessionFromStorage();
@@ -494,6 +562,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setIsAuthenticated(false);
+    setGoals([]);
     setActiveSession(null);
     setActiveTimer({
       type: "stopwatch",
@@ -504,6 +573,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     });
     localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
     localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_GOALS);
     localStorage.removeItem(LOCAL_STORAGE_KEY_SESSIONS);
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
     localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
@@ -514,7 +584,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     subjectId: string,
     topic: string,
     type: SessionType,
-    targetMinutes: number = 25
+    targetMinutes: number = 25,
+    goalId?: string | null
   ) => {
     const subject = subjects.find((s) => s.id === subjectId) || {
       id: subjectId && subjectId.length === 36 ? subjectId : generateUUID(),
@@ -526,10 +597,13 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
 
+    const linkedGoal = goalId ? goals.find((g) => g.id === goalId) : undefined;
+
     const newSession: StudySession = {
       id: generateUUID(),
       user_id: user?.id || "user",
       subject_id: subject.id,
+      goal_id: goalId || null,
       topic: topic.trim() || "Deep Study Block",
       start_time: new Date().toISOString(),
       end_time: null,
@@ -541,6 +615,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       thoughts: [],
       created_at: new Date().toISOString(),
       subject,
+      goal: linkedGoal,
     };
 
     const initialTimerState: ActiveTimerState = {
@@ -712,6 +787,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           id: completedSession.id,
           user_id: user.id,
           subject_id: completedSession.subject_id,
+          goal_id: completedSession.goal_id || null,
           topic: completedSession.topic,
           start_time: completedSession.start_time,
           end_time: completedSession.end_time,
@@ -894,6 +970,133 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const createGoal = async (
+    goalData: Omit<ExamGoal, "id" | "user_id" | "created_at">
+  ): Promise<ExamGoal> => {
+    const goalId = generateUUID();
+    const newGoal: ExamGoal = {
+      ...goalData,
+      id: goalId,
+      user_id: user?.id || "user",
+      created_at: new Date().toISOString(),
+    };
+
+    setGoals((prev) => {
+      const updated = [newGoal, ...prev];
+      localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
+      try {
+        const { data, error } = await supabase
+          .from("exam_goals")
+          .insert({
+            id: goalId,
+            user_id: user.id,
+            title: newGoal.title,
+            target_date: newGoal.target_date,
+            target_total_hours: newGoal.target_total_hours,
+            subject_allocations: newGoal.subject_allocations,
+            color: newGoal.color,
+            icon: newGoal.icon,
+            status: newGoal.status,
+            notes: newGoal.notes,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error("Supabase create goal error:", error);
+        } else if (data) {
+          setGoals((prev) => {
+            const mapped = prev.map((g) => (g.id === goalId ? data : g));
+            localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(mapped));
+            return mapped;
+          });
+          return data;
+        }
+      } catch (e) {
+        console.error("Supabase create goal exception:", e);
+      }
+    }
+
+    return newGoal;
+  };
+
+  const updateGoal = async (id: string, updates: Partial<ExamGoal>) => {
+    setGoals((prev) => {
+      const updated = prev.map((g) => (g.id === id ? { ...g, ...updates } : g));
+      localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
+      try {
+        await supabase.from("exam_goals").update(updates).eq("id", id);
+      } catch (e) {
+        console.error("Supabase update goal error:", e);
+      }
+    }
+  };
+
+  const deleteGoal = async (id: string) => {
+    setGoals((prev) => {
+      const updated = prev.filter((g) => g.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Unlink from active sessions locally
+    setSessions((prev) => {
+      const updated = prev.map((s) =>
+        s.goal_id === id ? { ...s, goal_id: null, goal: undefined } : s
+      );
+      localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
+      try {
+        await supabase.from("exam_goals").delete().eq("id", id);
+      } catch (e) {
+        console.error("Supabase delete goal error:", e);
+      }
+    }
+  };
+
+  const completeGoal = async (id: string) => {
+    await updateGoal(id, { status: "completed" });
+  };
+
+  const archiveGoal = async (id: string) => {
+    await updateGoal(id, { status: "archived" });
+  };
+
+  const linkSessionToGoal = async (sessionId: string, goalId: string | null) => {
+    const linkedGoal = goalId ? goals.find((g) => g.id === goalId) : undefined;
+    setSessions((prev) => {
+      const updated = prev.map((s) =>
+        s.id === sessionId
+          ? { ...s, goal_id: goalId, goal: linkedGoal }
+          : s
+      );
+      localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (user && !user.id.startsWith("demo-") && !user.id.startsWith("guest-")) {
+      try {
+        await supabase
+          .from("study_sessions")
+          .update({ goal_id: goalId })
+          .eq("id", sessionId);
+      } catch (e) {
+        console.error("Supabase link session to goal error:", e);
+      }
+    }
+  };
+
   return (
     <StudyContext.Provider
       value={{
@@ -901,6 +1104,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated,
         isLoading,
         subjects,
+        goals,
         sessions,
         activeSession,
         activeTimer,
@@ -917,6 +1121,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         createSubject,
         updateSubject,
         deleteSubject,
+        createGoal,
+        updateGoal,
+        deleteGoal,
+        completeGoal,
+        archiveGoal,
+        linkSessionToGoal,
         signInWithGoogle,
         signInAsDemoUser,
         signOut,

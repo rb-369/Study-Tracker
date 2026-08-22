@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Play, Clock, Plus, BookOpen, Sparkles } from "lucide-react";
+import { X, Play, Clock, Plus, BookOpen, Sparkles, Target } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { SessionType } from "@/types";
 
 interface SessionStartModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialGoalId?: string;
+  initialSubjectId?: string;
 }
 
 const POMODORO_PRESETS = [25, 45, 50, 90];
@@ -18,15 +20,31 @@ const SUBJECT_SUGGESTIONS = [
   { name: "General Study", color: "#f59e0b" },
 ];
 
-export function SessionStartModal({ isOpen, onClose }: SessionStartModalProps) {
-  const { subjects, createSubject, startSession } = useStudyStore();
+export function SessionStartModal({
+  isOpen,
+  onClose,
+  initialGoalId,
+  initialSubjectId,
+}: SessionStartModalProps) {
+  const { subjects, goals, createSubject, startSession } = useStudyStore();
 
+  const activeGoals = goals.filter((g) => g.status === "active" || !g.status);
+
+  const [selectedGoalId, setSelectedGoalId] = useState<string>(initialGoalId || "");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(
-    subjects[0]?.id || ""
+    initialSubjectId || subjects[0]?.id || ""
   );
   const [topic, setTopic] = useState("");
   const [sessionType, setSessionType] = useState<SessionType>("stopwatch");
   const [targetMinutes, setTargetMinutes] = useState<number>(25);
+
+  // Sync initial props when opened
+  React.useEffect(() => {
+    if (isOpen) {
+      if (initialGoalId) setSelectedGoalId(initialGoalId);
+      if (initialSubjectId) setSelectedSubjectId(initialSubjectId);
+    }
+  }, [isOpen, initialGoalId, initialSubjectId]);
 
   // Sync selectedSubjectId when subjects load
   React.useEffect(() => {
@@ -87,10 +105,12 @@ export function SessionStartModal({ isOpen, onClose }: SessionStartModalProps) {
       targetSubjId,
       topic.trim() || "Deep Focus Block",
       sessionType,
-      targetMinutes
+      targetMinutes,
+      selectedGoalId || undefined
     );
 
     setTopic("");
+    setSelectedGoalId("");
     onClose();
   };
 
@@ -120,6 +140,42 @@ export function SessionStartModal({ isOpen, onClose }: SessionStartModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          {/* Exam / Goal Target Selection (Optional) */}
+          {activeGoals.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                Exam / Milestone Target (Optional)
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedGoalId}
+                  onChange={(e) => {
+                    const newGoalId = e.target.value;
+                    setSelectedGoalId(newGoalId);
+                    // If this goal has specific subject allocations, preselect the first one if current subject is not in it
+                    if (newGoalId) {
+                      const g = activeGoals.find((goal) => goal.id === newGoalId);
+                      if (g && g.subject_allocations && g.subject_allocations.length > 0) {
+                        const hasCurrent = g.subject_allocations.some((a) => a.subject_id === selectedSubjectId);
+                        if (!hasCurrent) {
+                          setSelectedSubjectId(g.subject_allocations[0].subject_id);
+                        }
+                      }
+                    }
+                  }}
+                  className="w-full py-2.5 px-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+                >
+                  <option value="">None (Standalone Focus Block)</option>
+                  {activeGoals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      🎯 {g.title} ({g.target_total_hours}h target &bull; {new Date(g.target_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           {/* Subject Selection */}
           <div>
             <div className="flex items-center justify-between mb-1.5">

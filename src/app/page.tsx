@@ -13,8 +13,10 @@ import {
   Plus, 
   BookOpen,
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  Target
 } from "lucide-react";
+import Link from "next/link";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Navbar } from "@/components/layout/Navbar";
@@ -29,7 +31,7 @@ import { StudySession } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, createSubject } = useStudyStore();
+  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, goals, createSubject } = useStudyStore();
 
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
@@ -259,6 +261,69 @@ export default function DashboardPage() {
 
             {/* Desktop Right Rail (4 Columns on Desktop) */}
             <div className="lg:col-span-4 space-y-6">
+              {/* Active Exam Goals Widget */}
+              <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-5">
+                <div className="flex items-center justify-between pb-3.5 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                      Active Exam Goals
+                    </h3>
+                  </div>
+                  <Link
+                    href="/goals"
+                    className="text-[11px] text-emerald-400 hover:underline font-medium flex items-center gap-1"
+                  >
+                    <span>View Hub</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+
+                {goals.filter(g => g.status === 'active' || !g.status).length === 0 ? (
+                  <div className="py-5 text-center">
+                    <p className="text-xs text-zinc-400">No exam goals active</p>
+                    <Link
+                      href="/goals"
+                      className="mt-2 inline-block text-xs font-medium text-emerald-400 hover:underline"
+                    >
+                      + Set up Final Exam / PT Goal
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mt-3.5">
+                    {goals.filter(g => g.status === 'active' || !g.status).slice(0, 3).map((g) => {
+                      const goalSessions = sessions.filter(s => s.goal_id === g.id && s.status === 'completed');
+                      const gNetMins = goalSessions.reduce((acc, s) => acc + Math.round(s.net_focus_seconds / 60), 0);
+                      const gTargetMins = Math.max(1, Math.round(g.target_total_hours * 60));
+                      const gPct = Math.min(100, Math.round((gNetMins / gTargetMins) * 100));
+
+                      return (
+                        <Link
+                          key={g.id}
+                          href="/goals"
+                          className="block p-2.5 rounded-xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800/80 transition-all group"
+                        >
+                          <div className="flex items-center justify-between text-xs mb-1.5">
+                            <span className="font-semibold text-zinc-200 group-hover:text-emerald-400 truncate">
+                              {g.title}
+                            </span>
+                            <span className="text-[11px] text-zinc-400 font-mono">
+                              {formatMinutesToDisplay(gNetMins)} / {g.target_total_hours}h
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                              style={{ width: `${gPct}%` }}
+                            />
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Enrolled Courses / Subject Targets */}
               <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-5">
                 <div className="flex items-center justify-between pb-3.5 border-b border-zinc-800/80">

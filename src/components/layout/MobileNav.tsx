@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Flame, BarChart3, BookOpen, Settings } from "lucide-react";
+import { Flame, BarChart3, BookOpen, Settings, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MobileNavProps {
@@ -15,6 +15,7 @@ export function MobileNav({ onOpenNewSession }: MobileNavProps) {
 
   const navItems = [
     { label: "Focus", href: "/", icon: Flame },
+    { label: "Goals", href: "/goals", icon: Target },
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
     { label: "Subjects", href: "/subjects", icon: BookOpen },
     { label: "Settings", href: "/settings", icon: Settings },

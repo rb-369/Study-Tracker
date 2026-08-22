@@ -13,7 +13,8 @@ import {
   Lightbulb, 
   AlertTriangle,
   Flame,
-  Check
+  Check,
+  Target
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { AIDebrief } from "@/types";
@@ -256,6 +257,21 @@ export function SessionEndDebriefModal({ isOpen, onClose }: SessionEndDebriefMod
                 <span className="text-slate-400">Recommended Next Focus:</span>
                 <span className="font-semibold text-focus">
                   {debriefResult.nextSessionTopicSuggestion}
+                </span>
+              </div>
+            )}
+
+            {/* Goal Milestone Credit Banner */}
+            {activeSession?.goal && (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs text-zinc-300 font-medium">
+                    Credited to: <strong className="text-emerald-400">{activeSession.goal.title}</strong>
+                  </span>
+                </div>
+                <span className="text-xs text-emerald-400 font-mono font-bold">
+                  +{formatMinutesToDisplay(Math.round(netFocusSeconds / 60))} Net Focus
                 </span>
               </div>
             )}

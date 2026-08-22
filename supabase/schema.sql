@@ -65,11 +65,35 @@ create policy "Users can manage own subjects"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- 3. Study Sessions Table
+-- 3. Exam / Milestone Goals Table
+create table if not exists public.exam_goals (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  title text not null,
+  target_date date not null,
+  target_total_hours numeric default 20 not null,
+  subject_allocations jsonb default '[]'::jsonb not null,
+  color text default '#10b981' not null,
+  icon text default 'Target' not null,
+  status text check (status in ('active', 'completed', 'archived')) default 'active' not null,
+  notes text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- RLS for Exam Goals
+alter table public.exam_goals enable row level security;
+
+create policy "Users can manage own exam goals"
+  on public.exam_goals for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 4. Study Sessions Table
 create table if not exists public.study_sessions (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   subject_id uuid references public.subjects(id) on delete cascade not null,
+  goal_id uuid references public.exam_goals(id) on delete set null,
   topic text not null,
   start_time timestamp with time zone not null,
   end_time timestamp with time zone,
@@ -91,7 +115,7 @@ create policy "Users can manage own study sessions"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- 4. Thoughts ("Mind Pings") Table
+-- 5. Thoughts ("Mind Pings") Table
 create table if not exists public.thoughts (
   id uuid default gen_random_uuid() primary key,
   session_id uuid references public.study_sessions(id) on delete cascade not null,
@@ -114,6 +138,8 @@ create policy "Users can manage own thoughts"
 
 -- Indexes for lightning fast analytics
 create index if not exists idx_sessions_user_time on public.study_sessions(user_id, start_time desc);
+create index if not exists idx_sessions_goal on public.study_sessions(goal_id);
 create index if not exists idx_thoughts_session on public.thoughts(session_id);
 create index if not exists idx_thoughts_user on public.thoughts(user_id);
 create index if not exists idx_subjects_user on public.subjects(user_id);
+create index if not exists idx_goals_user on public.exam_goals(user_id);
