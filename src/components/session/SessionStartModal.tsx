@@ -168,7 +168,7 @@ export function SessionStartModal({
                   <option value="">None (Standalone Focus Block)</option>
                   {activeGoals.map((g) => (
                     <option key={g.id} value={g.id}>
-                      🎯 {g.title} ({g.target_total_hours}h target &bull; {new Date(g.target_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                      🎯 {g.title} ({g.target_total_hours}h target &bull; {g.target_date ? new Date(g.target_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Ongoing"})
                     </option>
                   ))}
                 </select>

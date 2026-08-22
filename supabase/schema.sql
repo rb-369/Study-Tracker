@@ -70,7 +70,7 @@ create table if not exists public.exam_goals (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   title text not null,
-  target_date date not null,
+  target_date date,
   target_total_hours numeric default 20 not null,
   subject_allocations jsonb default '[]'::jsonb not null,
   color text default '#10b981' not null,

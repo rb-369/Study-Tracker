@@ -25,9 +25,9 @@ const PRESET_TITLES = [
   "Final Exam Study",
   "PT-1 Exam Prep",
   "Practical Exam Prep",
-  "Midterm Revision",
-  "Semester Finals",
-  "Competitive Exam Sprint",
+  "Project Research",
+  "General Study Sprint",
+  "Open Skill Mastery",
 ];
 
 const PRESET_COLORS = [
@@ -49,6 +49,7 @@ export function CreateGoalModal({
   const { subjects, createGoal, updateGoal } = useStudyStore();
 
   const [title, setTitle] = useState("");
+  const [hasDeadline, setHasDeadline] = useState(true);
   const [targetDate, setTargetDate] = useState("");
   const [targetTotalHours, setTargetTotalHours] = useState(20);
   const [allocations, setAllocations] = useState<SubjectAllocation[]>([]);
@@ -67,13 +68,15 @@ export function CreateGoalModal({
   useEffect(() => {
     if (initialGoal) {
       setTitle(initialGoal.title);
-      setTargetDate(initialGoal.target_date);
+      setHasDeadline(!!initialGoal.target_date);
+      setTargetDate(initialGoal.target_date || "");
       setTargetTotalHours(initialGoal.target_total_hours);
       setAllocations(initialGoal.subject_allocations || []);
       setColor(initialGoal.color || "#10b981");
       setNotes(initialGoal.notes || "");
     } else {
       setTitle("");
+      setHasDeadline(true);
       setTargetDate(getDefaultDate());
       setTargetTotalHours(20);
       setColor("#10b981");
@@ -125,20 +128,22 @@ export function CreateGoalModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setErrorMsg("Please enter an exam / goal title.");
+      setErrorMsg("Please enter a goal name.");
       return;
     }
-    if (!targetDate) {
-      setErrorMsg("Please select a target exam deadline.");
+    if (hasDeadline && !targetDate) {
+      setErrorMsg("Please select a target deadline, or choose 'No Deadline'.");
       return;
     }
+
+    const finalTargetDate = hasDeadline && targetDate ? targetDate : null;
 
     setIsSubmitting(true);
     try {
       if (initialGoal) {
         await updateGoal(initialGoal.id, {
           title: title.trim(),
-          target_date: targetDate,
+          target_date: finalTargetDate,
           target_total_hours: targetTotalHours,
           subject_allocations: allocations,
           color,
@@ -147,7 +152,7 @@ export function CreateGoalModal({
       } else {
         await createGoal({
           title: title.trim(),
-          target_date: targetDate,
+          target_date: finalTargetDate,
           target_total_hours: targetTotalHours,
           subject_allocations: allocations,
           color,
@@ -192,10 +197,10 @@ export function CreateGoalModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-zinc-100">
-                {initialGoal ? "Edit Exam Goal" : "Create Exam / Milestone Goal"}
+                {initialGoal ? "Edit Goal Track" : "Create Goal / Exam Track"}
               </h2>
               <p className="text-xs text-zinc-500">
-                Group study blocks and set target hours for exams
+                Group study blocks for exams, research projects, or ongoing subjects
               </p>
             </div>
           </div>
@@ -218,13 +223,13 @@ export function CreateGoalModal({
           {/* Goal Title */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
-              Goal / Exam Name
+              Goal / Track Name
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Final Exam Study, PT-1 Prep, Practical Exam"
+              placeholder="e.g. Final Exam Study, Project Research, Normal Studying"
               className="w-full py-2.5 px-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
               required
             />
@@ -235,7 +240,12 @@ export function CreateGoalModal({
                 <button
                   key={preset}
                   type="button"
-                  onClick={() => setTitle(preset)}
+                  onClick={() => {
+                    setTitle(preset);
+                    if (preset === "Project Research" || preset === "Open Skill Mastery") {
+                      setHasDeadline(false);
+                    }
+                  }}
                   className="px-2 py-0.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   {preset}
@@ -244,41 +254,84 @@ export function CreateGoalModal({
             </div>
           </div>
 
-          {/* Target Exam Date */}
+          {/* Deadline Mode Selector */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
-              Exam / Deadline Date
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
-                className="flex-1 py-2.5 px-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 transition-colors"
-                required
-              />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                Deadline & Timeline
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-2">
               <button
                 type="button"
-                onClick={() => setShortcutDate(7)}
-                className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
+                onClick={() => {
+                  setHasDeadline(true);
+                  if (!targetDate) setTargetDate(getDefaultDate());
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                  hasDeadline
+                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-semibold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
               >
-                +1 Wk
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Specific Deadline</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => setShortcutDate(14)}
-                className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
+                onClick={() => setHasDeadline(false)}
+                className={`py-2 px-3 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                  !hasDeadline
+                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 font-semibold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
               >
-                +2 Wk
-              </button>
-              <button
-                type="button"
-                onClick={() => setShortcutDate(30)}
-                className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
-              >
-                +1 Mo
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>No Deadline (Ongoing)</span>
               </button>
             </div>
+
+            {hasDeadline ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={targetDate}
+                  onChange={(e) => setTargetDate(e.target.value)}
+                  className="flex-1 py-2.5 px-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 transition-colors"
+                  required={hasDeadline}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShortcutDate(7)}
+                  className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
+                >
+                  +1 Wk
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShortcutDate(14)}
+                  className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
+                >
+                  +2 Wk
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShortcutDate(30)}
+                  className="px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 font-medium"
+                >
+                  +1 Mo
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-400 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>
+                  No time pressure — perfect for open project research, continuous reading, or everyday subject learning.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Total Target Hours */}

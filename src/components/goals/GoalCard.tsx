@@ -12,7 +12,8 @@ import {
   ChevronRight, 
   Archive, 
   Trash2,
-  Edit2
+  Edit2,
+  Sparkles
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { ExamGoal, StudySession, Subject } from "@/types";
@@ -52,12 +53,15 @@ export function GoalCard({
   const progressPercent = Math.min(100, Math.round((totalNetMinutes / targetMinutes) * 100));
   const isCompletedMilestone = progressPercent >= 100;
 
-  // Days left calculation
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const targetDate = new Date(goal.target_date);
-  targetDate.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  // Days left calculation (if deadline set)
+  let diffDays: number | null = null;
+  if (goal.target_date) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(goal.target_date);
+    targetDate.setHours(0, 0, 0, 0);
+    diffDays = Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }
 
   const handleCelebrate = () => {
     confetti({
@@ -115,32 +119,45 @@ export function GoalCard({
 
               {/* Deadline countdown & meta */}
               <div className="flex items-center gap-3 mt-1 text-xs text-zinc-400 flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>
-                    {new Date(goal.target_date).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </span>
+                {goal.target_date && diffDays !== null ? (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>
+                        {new Date(goal.target_date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </span>
 
-                <span className="text-zinc-600">&bull;</span>
+                    <span className="text-zinc-600">&bull;</span>
 
-                <span className={`font-medium ${
-                  diffDays < 0 
-                    ? "text-rose-400" 
-                    : diffDays <= 3 
-                    ? "text-amber-400 font-semibold" 
-                    : "text-zinc-400"
-                }`}>
-                  {diffDays < 0 
-                    ? `Passed ${Math.abs(diffDays)}d ago` 
-                    : diffDays === 0 
-                    ? "Exam is Today!" 
-                    : `${diffDays} days remaining`}
-                </span>
+                    <span className={`font-medium ${
+                      diffDays < 0 
+                        ? "text-rose-400" 
+                        : diffDays <= 3 
+                        ? "text-amber-400 font-semibold" 
+                        : "text-zinc-400"
+                    }`}>
+                      {diffDays < 0 
+                        ? `Passed ${Math.abs(diffDays)}d ago` 
+                        : diffDays === 0 
+                        ? "Exam is Today!" 
+                        : `${diffDays} days remaining`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Ongoing Track</span>
+                    </span>
+                    <span className="text-zinc-600">&bull;</span>
+                    <span className="text-zinc-500">No deadline set</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -86,12 +86,13 @@ export default function GoalsPage() {
     .reduce((acc, s) => acc + (s.net_focus_seconds || 0), 0);
   const totalGoalNetMinutes = Math.round(totalGoalNetSeconds / 60);
 
-  // Next upcoming exam
-  const sortedUpcoming = [...activeGoals].sort(
-    (a, b) => new Date(a.target_date).getTime() - new Date(b.target_date).getTime()
+  // Next upcoming exam (only among goals with a deadline)
+  const goalsWithDeadline = activeGoals.filter((g) => !!g.target_date);
+  const sortedUpcoming = [...goalsWithDeadline].sort(
+    (a, b) => new Date(a.target_date!).getTime() - new Date(b.target_date!).getTime()
   );
   const nextExam = sortedUpcoming[0];
-  const nextExamDays = nextExam 
+  const nextExamDays = nextExam && nextExam.target_date
     ? Math.ceil((new Date(nextExam.target_date).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24))
     : null;
 

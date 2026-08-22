@@ -62,7 +62,7 @@ export interface ExamGoal {
   id: string;
   user_id: string;
   title: string;
-  target_date: string; // YYYY-MM-DD
+  target_date?: string | null; // YYYY-MM-DD or null/empty for ongoing goals
   target_total_hours: number;
   subject_allocations: SubjectAllocation[];
   color: string;
