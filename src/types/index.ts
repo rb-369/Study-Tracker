@@ -1,6 +1,16 @@
 export type SessionStatus = 'active' | 'completed' | 'abandoned';
 export type SessionType = 'stopwatch' | 'pomodoro';
 
+export interface ActiveTimerState {
+  type: SessionType;
+  targetMinutes: number;
+  elapsedSeconds: number;
+  isRunning: boolean;
+  startTime: number | null;
+  lastStartedAt: number | null;
+  accumulatedSeconds: number;
+}
+
 export type ThoughtCategory = 
   | 'phone_social'
   | 'hunger_snack'

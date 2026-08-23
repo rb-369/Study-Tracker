@@ -1,19 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType, ExamGoal } from "@/types";
+import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType, ExamGoal, ActiveTimerState } from "@/types";
 import { INITIAL_SUBJECTS, INITIAL_SESSIONS, INITIAL_GOALS } from "./seedData";
 import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
-import { generateUUID } from "@/lib/utils";
-
-interface ActiveTimerState {
-  type: SessionType;
-  targetMinutes: number;
-  elapsedSeconds: number;
-  isRunning: boolean;
-  startTime: number | null;
-}
+import { generateUUID, formatSecondsToTimer } from "@/lib/utils";
+import { playPomodoroCompleteChime, sendStudyNotification, updateLiveTimerTitle, resetTabTitle } from "@/lib/sound";
 
 interface StudyContextType {
   user: UserProfile | null;
@@ -79,9 +72,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     elapsedSeconds: 0,
     isRunning: false,
     startTime: null,
+    lastStartedAt: null,
+    accumulatedSeconds: 0,
   });
 
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAlertedCompletionRef = useRef<boolean>(false);
   const supabase = createClient();
 
   // Helper to recover active session & timer from localStorage with exact elapsed calculation
@@ -97,32 +93,35 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
 
         if (savedTimer) {
           const parsedTimer = JSON.parse(savedTimer);
-          let calculatedElapsed = parsedTimer.elapsedSeconds || 0;
+          const isRunning = parsedTimer.isRunning ?? true;
+          const accumulated = parsedTimer.accumulatedSeconds ?? parsedTimer.elapsedSeconds ?? 0;
+          const lastStartedAt = parsedTimer.lastStartedAt ?? parsedTimer.lastUpdatedTimestamp ?? parsedTimer.startTime;
 
-          // If timer was running when page refreshed, add elapsed seconds since last timestamp
-          if (parsedTimer.isRunning && parsedTimer.lastUpdatedTimestamp) {
-            const secondsSinceLastTick = Math.max(
-              0,
-              Math.floor((Date.now() - parsedTimer.lastUpdatedTimestamp) / 1000)
-            );
-            calculatedElapsed += secondsSinceLastTick;
+          let calculatedElapsed = accumulated;
+          if (isRunning && lastStartedAt) {
+            calculatedElapsed = accumulated + Math.max(0, Math.floor((Date.now() - lastStartedAt) / 1000));
           }
 
           setActiveTimer({
             type: parsedTimer.type || active.session_type || "stopwatch",
             targetMinutes: parsedTimer.targetMinutes || 25,
             elapsedSeconds: calculatedElapsed,
-            isRunning: parsedTimer.isRunning ?? true,
+            isRunning,
             startTime: parsedTimer.startTime || new Date(active.start_time).getTime(),
+            lastStartedAt: isRunning ? (lastStartedAt || Date.now()) : null,
+            accumulatedSeconds: accumulated,
           });
         } else {
-          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(active.start_time).getTime()) / 1000));
+          const sessionStartMs = new Date(active.start_time).getTime();
+          const elapsed = Math.max(0, Math.floor((Date.now() - sessionStartMs) / 1000));
           setActiveTimer({
             type: active.session_type || "stopwatch",
             targetMinutes: 25,
             elapsedSeconds: elapsed,
             isRunning: true,
-            startTime: new Date(active.start_time).getTime(),
+            startTime: sessionStartMs,
+            lastStartedAt: sessionStartMs,
+            accumulatedSeconds: 0,
           });
         }
       }
@@ -203,7 +202,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           elapsedSeconds: 0,
           isRunning: false,
           startTime: null,
+          lastStartedAt: null,
+          accumulatedSeconds: 0,
         });
+        hasAlertedCompletionRef.current = false;
+        resetTabTitle();
         localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
         localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
         localStorage.removeItem(LOCAL_STORAGE_KEY_GOALS);
@@ -447,35 +450,196 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeSession, activeTimer]);
 
-  // Timer Tick Engine
+  // 1. Instant Wall-Clock Recalculation on Visibility Change, Focus & Page Show
   useEffect(() => {
-    if (activeTimer.isRunning) {
-      timerIntervalRef.current = setInterval(() => {
-        setActiveTimer((prev) => {
-          const updated = {
-            ...prev,
-            elapsedSeconds: prev.elapsedSeconds + 1,
-          };
-          if (activeSession) {
-            localStorage.setItem(
-              LOCAL_STORAGE_KEY_TIMER,
-              JSON.stringify({
-                ...updated,
-                lastUpdatedTimestamp: Date.now(),
-              })
-            );
-          }
+    if (typeof window === "undefined") return;
+
+    const handleSync = () => {
+      setActiveTimer((prev) => {
+        if (!prev.isRunning || !prev.lastStartedAt) return prev;
+        const now = Date.now();
+        const segment = Math.max(0, Math.floor((now - prev.lastStartedAt) / 1000));
+        const exact = (prev.accumulatedSeconds || 0) + segment;
+        if (exact !== prev.elapsedSeconds) {
+          const updated = { ...prev, elapsedSeconds: exact };
+          localStorage.setItem(
+            LOCAL_STORAGE_KEY_TIMER,
+            JSON.stringify({ ...updated, lastUpdatedTimestamp: now })
+          );
           return updated;
-        });
-      }, 1000);
-    } else if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
+        }
+        return prev;
+      });
+    };
+
+    document.addEventListener("visibilitychange", handleSync);
+    window.addEventListener("focus", handleSync);
+    window.addEventListener("pageshow", handleSync);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleSync);
+      window.removeEventListener("focus", handleSync);
+      window.removeEventListener("pageshow", handleSync);
+    };
+  }, []);
+
+  // 2. Cross-Tab Real-time Storage Sync
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === LOCAL_STORAGE_KEY_TIMER && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          const isRunning = parsed.isRunning ?? false;
+          const accumulated = parsed.accumulatedSeconds ?? parsed.elapsedSeconds ?? 0;
+          const lastStartedAt = parsed.lastStartedAt;
+
+          let calculated = accumulated;
+          if (isRunning && lastStartedAt) {
+            calculated = accumulated + Math.max(0, Math.floor((Date.now() - lastStartedAt) / 1000));
+          }
+
+          setActiveTimer({
+            ...parsed,
+            elapsedSeconds: calculated,
+          });
+        } catch {}
+      }
+      if (e.key === LOCAL_STORAGE_KEY_ACTIVE) {
+        try {
+          const parsed = e.newValue ? JSON.parse(e.newValue) : null;
+          setActiveSession(parsed);
+        } catch {}
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  // 3. Web Worker Background Tick Engine + Fallback Interval
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let worker: Worker | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+
+    const tick = () => {
+      setActiveTimer((prev) => {
+        if (!prev.isRunning || !prev.lastStartedAt) return prev;
+        const now = Date.now();
+        const segment = Math.max(0, Math.floor((now - prev.lastStartedAt) / 1000));
+        const exact = (prev.accumulatedSeconds || 0) + segment;
+
+        // Check Pomodoro target completion chime & notification
+        if (prev.type === "pomodoro") {
+          const targetSeconds = (prev.targetMinutes || 25) * 60;
+          if (exact >= targetSeconds && !hasAlertedCompletionRef.current) {
+            hasAlertedCompletionRef.current = true;
+            playPomodoroCompleteChime();
+            sendStudyNotification("StudyFlow: Pomodoro Complete! 🎉", {
+              body: `Great job on "${activeSession?.topic || 'your focus block'}"! Time for a well-deserved break.`,
+              tag: "pomodoro-complete",
+            });
+          }
+        }
+
+        if (exact === prev.elapsedSeconds) return prev;
+
+        const updated = {
+          ...prev,
+          elapsedSeconds: exact,
+        };
+
+        if (activeSession) {
+          localStorage.setItem(
+            LOCAL_STORAGE_KEY_TIMER,
+            JSON.stringify({
+              ...updated,
+              lastUpdatedTimestamp: now,
+            })
+          );
+        }
+
+        return updated;
+      });
+    };
+
+    if (activeTimer.isRunning) {
+      try {
+        const workerScript = `
+          let intervalId = null;
+          self.onmessage = function(e) {
+            if (e.data === 'START') {
+              if (intervalId) clearInterval(intervalId);
+              intervalId = setInterval(function() {
+                self.postMessage('TICK');
+              }, 1000);
+            } else if (e.data === 'STOP') {
+              if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+              }
+            }
+          };
+        `;
+        const blob = new Blob([workerScript], { type: "application/javascript" });
+        const workerUrl = URL.createObjectURL(blob);
+        worker = new Worker(workerUrl);
+
+        worker.onmessage = (e) => {
+          if (e.data === "TICK") {
+            tick();
+          }
+        };
+
+        worker.postMessage("START");
+      } catch (err) {
+        console.warn("Web worker not supported or blocked, using interval fallback:", err);
+      }
+
+      fallbackInterval = setInterval(tick, 1000);
     }
 
     return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (worker) {
+        worker.postMessage("STOP");
+        worker.terminate();
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+      }
     };
-  }, [activeTimer.isRunning, activeSession]);
+  }, [activeTimer.isRunning, activeTimer.type, activeTimer.targetMinutes, activeSession]);
+
+  // 4. Live Browser Tab Title Synchronization
+  useEffect(() => {
+    if (!activeSession) {
+      resetTabTitle();
+      return;
+    }
+
+    const isPomodoro = activeTimer.type === "pomodoro";
+    const targetSeconds = (activeTimer.targetMinutes || 25) * 60;
+    const isComplete = isPomodoro && activeTimer.elapsedSeconds >= targetSeconds;
+    const remainingSeconds = Math.max(0, targetSeconds - activeTimer.elapsedSeconds);
+    const overtimeSeconds = Math.max(0, activeTimer.elapsedSeconds - targetSeconds);
+
+    const formattedTime = isPomodoro
+      ? isComplete
+        ? `+${formatSecondsToTimer(overtimeSeconds)}`
+        : formatSecondsToTimer(remainingSeconds)
+      : formatSecondsToTimer(activeTimer.elapsedSeconds);
+
+    updateLiveTimerTitle({
+      topic: activeSession.topic,
+      formattedTime,
+      isRunning: activeTimer.isRunning,
+      isPomodoro,
+      isComplete,
+    });
+  }, [activeSession, activeTimer.elapsedSeconds, activeTimer.isRunning, activeTimer.type, activeTimer.targetMinutes]);
 
   // Compute live net focus time & focus ratio
   const totalThoughtSeconds = (activeSession?.thoughts || []).reduce(
@@ -570,7 +734,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       elapsedSeconds: 0,
       isRunning: false,
       startTime: null,
+      lastStartedAt: null,
+      accumulatedSeconds: 0,
     });
+    hasAlertedCompletionRef.current = false;
+    resetTabTitle();
     localStorage.removeItem(LOCAL_STORAGE_KEY_USER);
     localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
     localStorage.removeItem(LOCAL_STORAGE_KEY_GOALS);
@@ -618,14 +786,18 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       goal: linkedGoal,
     };
 
+    const now = Date.now();
     const initialTimerState: ActiveTimerState = {
       type,
       targetMinutes,
       elapsedSeconds: 0,
       isRunning: true,
-      startTime: Date.now(),
+      startTime: now,
+      lastStartedAt: now,
+      accumulatedSeconds: 0,
     };
 
+    hasAlertedCompletionRef.current = false;
     setActiveSession(newSession);
     setActiveTimer(initialTimerState);
 
@@ -634,19 +806,30 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       LOCAL_STORAGE_KEY_TIMER,
       JSON.stringify({
         ...initialTimerState,
-        lastUpdatedTimestamp: Date.now(),
+        lastUpdatedTimestamp: now,
       })
     );
   };
 
   const pauseSession = () => {
     setActiveTimer((prev) => {
-      const updated = { ...prev, isRunning: false };
+      const now = Date.now();
+      const currentSegment = prev.isRunning && prev.lastStartedAt
+        ? Math.max(0, Math.floor((now - prev.lastStartedAt) / 1000))
+        : 0;
+      const totalAccumulated = (prev.accumulatedSeconds || 0) + currentSegment;
+      const updated: ActiveTimerState = {
+        ...prev,
+        isRunning: false,
+        lastStartedAt: null,
+        accumulatedSeconds: totalAccumulated,
+        elapsedSeconds: totalAccumulated,
+      };
       localStorage.setItem(
         LOCAL_STORAGE_KEY_TIMER,
         JSON.stringify({
           ...updated,
-          lastUpdatedTimestamp: Date.now(),
+          lastUpdatedTimestamp: now,
         })
       );
       return updated;
@@ -655,12 +838,17 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
 
   const resumeSession = () => {
     setActiveTimer((prev) => {
-      const updated = { ...prev, isRunning: true };
+      const now = Date.now();
+      const updated: ActiveTimerState = {
+        ...prev,
+        isRunning: true,
+        lastStartedAt: now,
+      };
       localStorage.setItem(
         LOCAL_STORAGE_KEY_TIMER,
         JSON.stringify({
           ...updated,
-          lastUpdatedTimestamp: Date.now(),
+          lastUpdatedTimestamp: now,
         })
       );
       return updated;
@@ -776,7 +964,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       elapsedSeconds: 0,
       isRunning: false,
       startTime: null,
+      lastStartedAt: null,
+      accumulatedSeconds: 0,
     });
+    hasAlertedCompletionRef.current = false;
+    resetTabTitle();
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
     localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
 
@@ -837,7 +1029,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       elapsedSeconds: 0,
       isRunning: false,
       startTime: null,
+      lastStartedAt: null,
+      accumulatedSeconds: 0,
     });
+    hasAlertedCompletionRef.current = false;
+    resetTabTitle();
     localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
     localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
   };

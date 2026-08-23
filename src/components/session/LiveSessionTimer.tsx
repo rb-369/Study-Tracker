@@ -14,11 +14,13 @@ import {
   AlertCircle,
   TrendingUp,
   X,
-  Target
+  Target,
+  Bell
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { formatSecondsToTimer, formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { MindPingLoggerModal } from "./MindPingLoggerModal";
+import { getNotificationPermission, requestNotificationPermission } from "@/lib/sound";
 
 interface LiveSessionTimerProps {
   onEndSessionClick: () => void;
@@ -39,6 +41,16 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
   const [isPingModalOpen, setIsPingModalOpen] = useState(false);
   const [showConfirmAbandon, setShowConfirmAbandon] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<string>("default");
+
+  useEffect(() => {
+    setNotifPermission(getNotificationPermission());
+  }, []);
+
+  const handleToggleNotifications = async () => {
+    const perm = await requestNotificationPermission();
+    setNotifPermission(perm);
+  };
 
   // Quick 1-tap categories to log without opening full modal
   const quickCategories = [
@@ -127,6 +139,25 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {notifPermission === "default" && (
+            <button
+              onClick={handleToggleNotifications}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs border border-zinc-700 transition-colors"
+              title="Enable background tab notifications & sound alerts"
+            >
+              <Bell className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline text-[11px] font-medium">Alerts</span>
+            </button>
+          )}
+          {notifPermission === "granted" && (
+            <div
+              className="p-1.5 rounded-lg text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+              title="Background tab notifications & sound chime active"
+            >
+              <Bell className="w-3.5 h-3.5" />
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
             <span className={`w-2 h-2 rounded-full ${activeTimer.isRunning ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
             <span className="text-xs font-mono text-zinc-300">

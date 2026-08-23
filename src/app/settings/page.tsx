@@ -12,13 +12,16 @@ import {
   ShieldCheck, 
   Copy,
   ExternalLink,
-  Target
+  Target,
+  Bell,
+  Volume2
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Navbar } from "@/components/layout/Navbar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { SessionStartModal } from "@/components/session/SessionStartModal";
+import { playPomodoroCompleteChime, requestNotificationPermission, sendStudyNotification } from "@/lib/sound";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -174,7 +177,51 @@ export default function SettingsPage() {
             </form>
           </div>
 
-          {/* 3. AI Intelligence Engine Status */}
+          {/* 3. Background Timer & Sound Notifications */}
+          <div className="p-6 rounded-2xl glass-card border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                <Bell className="w-4 h-4 text-emerald-400" />
+                <span>Background Timer & Audio Alerts</span>
+              </h3>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                Web Worker Active
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              StudyFlow uses an isolated background Web Worker engine paired with real-time wall-clock tracking. Your timer never drifts or freezes when switching tabs or minimizing the browser.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => playPomodoroCompleteChime()}
+                className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-semibold text-zinc-200 flex items-center gap-2 transition-all active:scale-95"
+              >
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Test Bell Chime</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const perm = await requestNotificationPermission();
+                  if (perm === "granted") {
+                    sendStudyNotification("StudyFlow Alerts Enabled! 🎉", {
+                      body: "You will receive notifications when Pomodoro sessions complete in the background.",
+                    });
+                  }
+                }}
+                className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-semibold text-emerald-400 flex items-center gap-2 transition-all active:scale-95"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Enable Desktop Notifications</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 4. AI Intelligence Engine Status */}
           <div className="p-6 rounded-2xl glass-card border border-border space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
@@ -206,7 +253,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 4. Supabase Database Cloud Sync */}
+          {/* 5. Supabase Database Cloud Sync */}
           <div className="p-6 rounded-2xl glass-card border border-border space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
