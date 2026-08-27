@@ -37,11 +37,12 @@ export type AgentStreamCallback = (chunk: {
   event?: AgentToolEvent;
 }) => void;
 
+// Active, responsive free models on OpenRouter
 const FREE_MODELS_FALLBACK_CHAIN = [
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1:free",
-  "qwen/qwen-2.5-72b-instruct:free",
+  "minimax/minimax-m3:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "liquid/lfm-2.5-2.6b:free",
+  "openrouter/free",
 ];
 
 /**
@@ -60,6 +61,11 @@ function analyzeIntent(query: string): {
     "my progress",
     "my distraction",
     "my focus",
+    "avg",
+    "average",
+    "focus time",
+    "score",
+    "streak",
     "weakest",
     "past",
     "yesterday",
@@ -68,8 +74,6 @@ function analyzeIntent(query: string): {
     "how do i do on",
     "physics",
     "math",
-    "score",
-    "streak",
     "why am i losing",
   ];
 
@@ -111,13 +115,53 @@ export async function runStudyFlowAgent(
   const { messages, allSessions = [], activeSessionContext } = params;
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content || "";
 
-  // 1. Router Step: Analyze intent
+  // 1. Calculate Aggregate Telemetry from User's Full History
+  const completedSessions = allSessions.filter((s) => s.gross_duration_seconds > 0);
+  const totalSessionsCount = completedSessions.length;
+  const totalGrossSeconds = completedSessions.reduce((acc, s) => acc + s.gross_duration_seconds, 0);
+  const totalNetSeconds = completedSessions.reduce((acc, s) => acc + s.net_focus_seconds, 0);
+  const totalGrossMinutes = Math.round(totalGrossSeconds / 60);
+  const totalNetMinutes = Math.round(totalNetSeconds / 60);
+  const avgGrossMinutes = totalSessionsCount > 0 ? (totalGrossMinutes / totalSessionsCount).toFixed(1) : "0";
+  const avgNetFocusMinutes = totalSessionsCount > 0 ? (totalNetMinutes / totalSessionsCount).toFixed(1) : "0";
+  const avgFocusScore = totalSessionsCount > 0 ? Math.round(completedSessions.reduce((acc, s) => acc + s.focus_score, 0) / totalSessionsCount) : 100;
+  const overallFocusRatio = totalGrossMinutes > 0 ? Math.round((totalNetMinutes / totalGrossMinutes) * 100) : 100;
+  const totalDistractionsCount = completedSessions.reduce((acc, s) => acc + (s.thoughts?.length || 0), 0);
+
+  // Subject breakdown stats
+  const subjectMap = new Map<string, { sessions: number; netMins: number; scoreSum: number }>();
+  completedSessions.forEach((s) => {
+    const name = s.subject?.name || "General";
+    const cur = subjectMap.get(name) || { sessions: 0, netMins: 0, scoreSum: 0 };
+    cur.sessions += 1;
+    cur.netMins += Math.round(s.net_focus_seconds / 60);
+    cur.scoreSum += s.focus_score;
+    subjectMap.set(name, cur);
+  });
+
+  const subjectStatsLines = Array.from(subjectMap.entries()).map(([name, data]) => {
+    const avgScore = Math.round(data.scoreSum / data.sessions);
+    return `  • ${name}: ${data.sessions} sessions, ${data.netMins} mins total net focus, Avg Score: ${avgScore}/100`;
+  });
+
+  const statsContext = {
+    totalSessionsCount,
+    avgNetFocusMinutes,
+    avgGrossMinutes,
+    avgFocusScore,
+    totalNetMinutes,
+    overallFocusRatio,
+    totalDistractionsCount,
+    subjectStatsLines,
+  };
+
+  // 2. Router Step: Analyze intent
   const intent = analyzeIntent(lastUserMessage);
 
   let retrievedSessions: SessionMemoryItem[] = [];
   let webResults: SearchResultItem[] = [];
 
-  // 2. Node: Qdrant Memory Retrieval (if relevant or explicitly studying)
+  // 3. Node: Qdrant Memory Retrieval (if relevant)
   if (intent.needsQdrant || allSessions.length > 0) {
     onStream({
       event: {
@@ -140,7 +184,7 @@ export async function runStudyFlowAgent(
     });
   }
 
-  // 3. Node: Tavily Web Search (if query requests techniques, research, or syllabus)
+  // 4. Node: Tavily Web Search (if query requests techniques, research, or syllabus)
   if (intent.needsTavily) {
     onStream({
       event: {
@@ -163,8 +207,18 @@ export async function runStudyFlowAgent(
     });
   }
 
-  // 4. Construct Rich Grounded System Prompt
-  let contextBlock = "";
+  // 5. Construct Rich Grounded System Prompt
+  let contextBlock = `
+[USER COGNITIVE & STUDY AGGREGATE STATS]:
+- Total Completed Sessions: ${totalSessionsCount} sessions
+- Average Net Focus Duration: ${avgNetFocusMinutes} minutes per session (Gross session avg: ${avgGrossMinutes}m)
+- Average Focus Score: ${avgFocusScore}/100
+- Total Net Focused Time: ${(totalNetMinutes / 60).toFixed(1)} hours (${totalNetMinutes} minutes)
+- Total Gross Clock Time: ${(totalGrossMinutes / 60).toFixed(1)} hours (${totalGrossMinutes} minutes)
+- Overall Focus Purity Ratio: ${overallFocusRatio}%
+- Total Stray Mind Pings Logged: ${totalDistractionsCount} pings
+${subjectStatsLines.length > 0 ? `- Subject Performance:\n${subjectStatsLines.join("\n")}` : ""}
+`;
 
   if (activeSessionContext) {
     contextBlock += `\n[LIVE ACTIVE SESSION]:
@@ -176,7 +230,7 @@ export async function runStudyFlowAgent(
   }
 
   if (retrievedSessions.length > 0) {
-    contextBlock += `\n[USER STUDY HISTORY (FROM QDRANT MEMORY)]:\n` +
+    contextBlock += `\n[RELEVANT RECENT STUDY SESSIONS]:\n` +
       retrievedSessions
         .map(
           (s) =>
@@ -193,18 +247,17 @@ export async function runStudyFlowAgent(
   const systemInstruction = `You are StudyFlow's Cognitive Performance Mentor & Deep Work Coach.
 Your mission is to help students achieve extraordinary deep focus, conquer mental fatigue, overcome procrastination, and optimize their learning efficiency using evidence-based cognitive science.
 
-GUIDELINES:
-1. Tone: Highly encouraging, razor-sharp, actionable, empathetic, and grounded in neuroscience (active recall, interleaving, dopamine resets, ultradian cycles).
-2. Use the provided [USER STUDY HISTORY] and [LIVE ACTIVE SESSION] to give tailored, hyper-specific feedback.
+CRITICAL INSTRUCTIONS:
+1. When the user asks about their stats (e.g. average focus time, focus score, streaks, subject breakdown, distraction triggers), ALWAYS state the exact numerical metrics from [USER COGNITIVE & STUDY AGGREGATE STATS] in the first paragraph.
+2. Tone: Direct, encouraging, razor-sharp, actionable, and grounded in neuroscience (active recall, interleaving, dopamine resets, ultradian cycles).
 3. If [EXTERNAL RESEARCH] is provided, cite helpful tips naturally.
-4. Structure your response with clean Markdown: bullet points, bold key takeaways, and concise action steps.
-5. If the student is feeling overwhelmed or distracted, offer immediate 2-minute actionable resets (e.g. physiological sigh, tactile capture, 5-minute ramp-up).
+4. Structure your response with clean Markdown: bullet points, bold key numbers, and concise action steps.
 
 ${contextBlock}`;
 
   const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
 
-  // 5. OpenRouter Free Tier Fallback Generation
+  // 6. OpenRouter Free Tier Fallback Generation
   let fullOutput = "";
 
   for (const model of FREE_MODELS_FALLBACK_CHAIN) {
@@ -235,7 +288,7 @@ ${contextBlock}`;
             ...messages.slice(-8), // Keep recent conversation window
           ],
           stream: true,
-          temperature: 0.6,
+          temperature: 0.3,
         }),
       });
 
@@ -281,28 +334,63 @@ ${contextBlock}`;
     }
   }
 
-  // Final Intelligent Local Heuristic Mentor Fallback if all external APIs fail
-  const fallbackMessage = generateLocalMentorResponse(lastUserMessage, retrievedSessions, activeSessionContext);
+  // 7. Final Intelligent Local Response Fallback if all external APIs fail or timeout
+  const fallbackMessage = generateLocalMentorResponse(lastUserMessage, statsContext, retrievedSessions, activeSessionContext);
   
   // Stream fallback text
   const words = fallbackMessage.split(" ");
   for (const word of words) {
     onStream({ content: word + " " });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 15));
   }
 
   return fallbackMessage;
 }
 
 /**
- * Intelligent local response generator if network or API keys are unavailable
+ * Intelligent local response generator with exact user statistics calculation
  */
 function generateLocalMentorResponse(
   query: string,
+  stats: {
+    totalSessionsCount: number;
+    avgNetFocusMinutes: string;
+    avgGrossMinutes: string;
+    avgFocusScore: number;
+    totalNetMinutes: number;
+    overallFocusRatio: number;
+    totalDistractionsCount: number;
+    subjectStatsLines: string[];
+  },
   sessions: SessionMemoryItem[],
   active?: AgentRunParams["activeSessionContext"]
 ): string {
   const q = query.toLowerCase();
+
+  // If user asks about their stats / average focus / scores
+  if (
+    q.includes("avg") ||
+    q.includes("average") ||
+    q.includes("focus time") ||
+    q.includes("how much") ||
+    q.includes("score") ||
+    q.includes("stats") ||
+    q.includes("telemetry") ||
+    q.includes("streak")
+  ) {
+    return `### 📊 Your Cognitive Telemetry & Study Metrics
+
+Based on your **${stats.totalSessionsCount} recorded study sessions**:
+
+- **Average Net Focus Duration**: **${stats.avgNetFocusMinutes} minutes** per session *(Gross average: ${stats.avgGrossMinutes}m)*
+- **Average Focus Score**: **${stats.avgFocusScore}/100**
+- **Total Net Focus Time**: **${(stats.totalNetMinutes / 60).toFixed(1)} hours** (${stats.totalNetMinutes} mins)
+- **Focus Purity Ratio**: **${stats.overallFocusRatio}%**
+- **Total Stray Mind Pings**: **${stats.totalDistractionsCount} pings**
+
+${stats.subjectStatsLines.length > 0 ? `**Subject Performance:**\n${stats.subjectStatsLines.join("\n")}\n\n` : ""}
+💡 *Cognitive Recommendation: Aim to keep your Net Focus Ratio above 85% by logging distracting impulses in the 1-Tap Mind Ping bar.*`;
+  }
 
   if (active) {
     return `### ⚡ Active Focus Optimization: ${active.subjectName} (${active.topic})
@@ -315,7 +403,7 @@ You are currently **${Math.round(active.elapsedSeconds / 60)} minutes** into thi
 3. **Active Questioning**: Don't passively read. Write one test question per key concept before ending the session.`;
   }
 
-  if (q.includes("distraction") || q.includes("phone") || q.includes("focus")) {
+  if (q.includes("distraction") || q.includes("phone") || q.includes("procrastinat")) {
     return `### 🛡️ Defeating Distractions & Mind Pings
 
 Based on your cognitive telemetry, here is the scientifically proven protocol to maintain high focus:
