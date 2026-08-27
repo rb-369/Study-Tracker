@@ -33,6 +33,7 @@ interface StudyContextType {
   startNextPomodoroSprint: () => void;
   addThought: (title: string, category: ThoughtCategory, approxDurationMinutes: number, notes?: string) => void;
   addCustomQuickPing: (ping: Omit<CustomQuickPing, "id">) => void;
+  updateCustomQuickPing: (id: string, updates: Partial<CustomQuickPing>) => void;
   removeCustomQuickPing: (id: string) => void;
   resetQuickPings: () => void;
   endSession: (sessionNotes?: string) => Promise<AIDebrief | null>;
@@ -1349,6 +1350,16 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const updateCustomQuickPing = (id: string, updates: Partial<CustomQuickPing>) => {
+    setCustomQuickPings((prev) => {
+      const updated = prev.map((p) =>
+        p.id === id ? { ...p, ...updates, isCustom: true } : p
+      );
+      localStorage.setItem(LOCAL_STORAGE_KEY_QUICK_PINGS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const removeCustomQuickPing = (id: string) => {
     setCustomQuickPings((prev) => {
       const updated = prev.filter((p) => p.id !== id);
@@ -1822,6 +1833,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         startNextPomodoroSprint,
         addThought,
         addCustomQuickPing,
+        updateCustomQuickPing,
         removeCustomQuickPing,
         resetQuickPings,
         endSession,

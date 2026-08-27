@@ -20,11 +20,13 @@ import {
   RotateCcw,
   FastForward,
   ChevronRight,
-  Flame
+  Flame,
+  Settings2
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { formatSecondsToTimer, formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { MindPingLoggerModal } from "./MindPingLoggerModal";
+import { ManageQuickPingsModal } from "./ManageQuickPingsModal";
 import { getNotificationPermission, requestNotificationPermission } from "@/lib/sound";
 import { BreakType } from "@/types";
 
@@ -53,6 +55,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
   } = useStudyStore();
 
   const [isPingModalOpen, setIsPingModalOpen] = useState(false);
+  const [isManagePingsModalOpen, setIsManagePingsModalOpen] = useState(false);
   const [showConfirmAbandon, setShowConfirmAbandon] = useState(false);
   const [notifPermission, setNotifPermission] = useState<string>("default");
   const [toastMsg, setToastMsg] = useState<{ text: string; type: "info" | "warn" | "success" } | null>(null);
@@ -570,13 +573,24 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
             )}
           </div>
 
-          <button
-            onClick={() => setIsPingModalOpen(true)}
-            className="text-[11px] text-emerald-400 hover:underline font-medium flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" />
-            <span>Custom Log</span>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setIsManagePingsModalOpen(true)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-200 font-medium flex items-center gap-1 hover:bg-zinc-800/80 px-2 py-1 rounded-lg transition-colors border border-transparent hover:border-zinc-700"
+              title="Edit or delete 1-tap mind pins"
+            >
+              <Settings2 className="w-3 h-3 text-zinc-400" />
+              <span>Edit Pins</span>
+            </button>
+
+            <button
+              onClick={() => setIsPingModalOpen(true)}
+              className="text-[11px] text-emerald-400 hover:underline font-medium flex items-center gap-1 px-1.5 py-1"
+            >
+              <Plus className="w-3 h-3" />
+              <span>Custom Log</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -669,6 +683,12 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         onSubmit={(title, category, duration, notes, pinToQuickBar) => {
           handleQuickPingClick({ title, category, minutes: duration });
         }}
+      />
+
+      {/* Manage 1-Tap Mind Pins Modal (Edit / Delete / Reorder / Create) */}
+      <ManageQuickPingsModal
+        isOpen={isManagePingsModalOpen}
+        onClose={() => setIsManagePingsModalOpen(false)}
       />
     </div>
   );
