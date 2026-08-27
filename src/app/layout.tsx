@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { StudyProvider } from "@/lib/store/useStudyStore";
+import { AIAgentFloatingWidget } from "@/components/ai/AIAgentFloatingWidget";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body className={`${inter.className} bg-background text-foreground antialiased min-h-[100dvh]`}>
         <StudyProvider>
           {children}
+          <AIAgentFloatingWidget />
         </StudyProvider>
       </body>
     </html>

@@ -13,7 +13,8 @@ import {
   Play,
   CheckCircle2,
   Plus,
-  Target
+  Target,
+  Brain
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export function Sidebar({ onOpenNewSession, onOpenNewSubject }: SidebarProps) {
 
   const navItems = [
     { label: "Focus Console", href: "/", icon: Flame },
+    { label: "AI Mentor", href: "/mentor", icon: Brain },
     { label: "Exam Goals", href: "/goals", icon: Target },
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
     { label: "Subjects", href: "/subjects", icon: BookOpen },
