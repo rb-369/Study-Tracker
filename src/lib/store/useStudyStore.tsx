@@ -819,14 +819,21 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     activeTimer.breakState?.isBreakRunning
   ]);
 
-  // Compute live net focus time & focus ratio
+  // Compute live net focus time & focus ratio across entire session (including multi-sprint Pomodoros)
+  const isPomodoro = activeTimer.type === "pomodoro";
+  const totalStudyGrossSeconds = isPomodoro && activeTimer.pomodoroCyclesCompleted && activeTimer.pomodoroCyclesCompleted > 0
+    ? (activeTimer.totalStudySeconds || 0) + activeTimer.elapsedSeconds
+    : activeTimer.elapsedSeconds;
+
   const totalThoughtSeconds = (activeSession?.thoughts || []).reduce(
-    (acc, t) => acc + (t.approx_duration_minutes || 0) * 60,
+    (acc, t) => acc + Math.round((t.approx_duration_minutes || 0) * 60),
     0
   );
-  const netFocusSeconds = Math.max(0, activeTimer.elapsedSeconds - totalThoughtSeconds);
-  const currentFocusRatio = activeTimer.elapsedSeconds > 0 
-    ? netFocusSeconds / activeTimer.elapsedSeconds 
+  // Cap the total subtracted distraction seconds so it CANNOT exceed actual elapsed study time
+  const safeDeductedSeconds = Math.min(totalThoughtSeconds, totalStudyGrossSeconds);
+  const netFocusSeconds = Math.max(0, totalStudyGrossSeconds - safeDeductedSeconds);
+  const currentFocusRatio = totalStudyGrossSeconds > 0 
+    ? netFocusSeconds / totalStudyGrossSeconds 
     : 1;
 
   // Compute longest uninterrupted streak in active session
@@ -1283,11 +1290,29 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   ) => {
     if (!activeSession) return;
 
-    // Safety Clamping: if session duration is less than the ping duration, clamp deduction safely
-    const elapsedMinutes = activeTimer.elapsedSeconds > 0 ? activeTimer.elapsedSeconds / 60 : 0;
-    const recordedDuration = elapsedMinutes > 0
-      ? Math.min(approxDurationMinutes, Math.max(0.5, Number(elapsedMinutes.toFixed(1))))
-      : 0.5;
+    // 1. Total gross study seconds elapsed so far across current session (including Pomodoro completed sprints)
+    const isPomodoro = activeTimer.type === "pomodoro";
+    const totalGrossStudySeconds = isPomodoro && activeTimer.pomodoroCyclesCompleted && activeTimer.pomodoroCyclesCompleted > 0
+      ? (activeTimer.totalStudySeconds || 0) + activeTimer.elapsedSeconds
+      : activeTimer.elapsedSeconds;
+
+    // 2. Total distraction seconds already deducted so far in this session
+    const alreadyDeductedSeconds = (activeSession.thoughts || []).reduce(
+      (acc, t) => acc + Math.round((t.approx_duration_minutes || 0) * 60),
+      0
+    );
+
+    // 3. How much remaining study seconds can possibly be deducted?
+    const remainingAvailableSeconds = Math.max(0, totalGrossStudySeconds - alreadyDeductedSeconds);
+
+    // 4. Requested duration in seconds
+    const requestedSeconds = Math.max(0, Math.round(approxDurationMinutes * 60));
+
+    // 5. Capped duration in seconds (cannot exceed remaining available study seconds)
+    // If user has only studied for 20s (or 2m) and requests 3m, cap at remaining available time.
+    // If user has 0s available (just started or already deducted all time), deduct 0s.
+    const actualDeductedSeconds = Math.min(requestedSeconds, remainingAvailableSeconds);
+    const actualDeductedMinutes = Number((actualDeductedSeconds / 60).toFixed(2));
 
     const newThought: Thought = {
       id: generateUUID(),
@@ -1295,7 +1320,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       user_id: user?.id || "user",
       title: title.trim(),
       category,
-      approx_duration_minutes: recordedDuration,
+      approx_duration_minutes: actualDeductedMinutes,
       timestamp: new Date().toISOString(),
       notes,
       created_at: new Date().toISOString(),
@@ -1350,11 +1375,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       ? completedCycleStudySeconds + currentStudySeconds
       : currentStudySeconds;
 
-    const thoughtMins = (activeSession.thoughts || []).reduce(
-      (acc, t) => acc + (t.approx_duration_minutes || 0),
+    const thoughtSeconds = (activeSession.thoughts || []).reduce(
+      (acc, t) => acc + Math.round((t.approx_duration_minutes || 0) * 60),
       0
     );
-    const netFocus = Math.max(0, totalStudyGrossSeconds - Math.round(thoughtMins * 60));
+    const safeDeductedSeconds = Math.min(thoughtSeconds, totalStudyGrossSeconds);
+    const netFocus = Math.max(0, totalStudyGrossSeconds - safeDeductedSeconds);
     const score = calculateFocusScore(totalStudyGrossSeconds, netFocus, activeSession.thoughts);
 
     const totalBreakSecondsRecorded = activeTimer.totalBreakSeconds || (activeTimer.breakState?.breakElapsedSeconds || 0);

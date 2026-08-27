@@ -55,10 +55,19 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
   const [isPingModalOpen, setIsPingModalOpen] = useState(false);
   const [showConfirmAbandon, setShowConfirmAbandon] = useState(false);
   const [notifPermission, setNotifPermission] = useState<string>("default");
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: "info" | "warn" | "success" } | null>(null);
 
   useEffect(() => {
     setNotifPermission(getNotificationPermission());
   }, []);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toastMsg) {
+      const timer = setTimeout(() => setToastMsg(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMsg]);
 
   const handleToggleNotifications = async () => {
     const perm = await requestNotificationPermission();
@@ -119,18 +128,62 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
   const isBreakCompleted = isBreakActive && breakElapsedSeconds >= breakTargetSeconds;
   const breakPercent = Math.min(100, Math.round((breakElapsedSeconds / breakTargetSeconds) * 100));
 
+  // Total Gross Study Time Elapsed (across current sprint & prior Pomodoro completed sprints)
+  const totalGrossStudySeconds = isPomodoro && activeTimer.pomodoroCyclesCompleted && activeTimer.pomodoroCyclesCompleted > 0
+    ? (activeTimer.totalStudySeconds || 0) + currentElapsed
+    : currentElapsed;
+
+  // Total Distraction Time Deducted (strictly clamped to elapsed study time)
+  const totalDistractionSeconds = (activeSession.thoughts || []).reduce(
+    (acc, t) => acc + Math.round((t.approx_duration_minutes || 0) * 60),
+    0
+  );
+  const safeDistractionSeconds = Math.min(totalDistractionSeconds, totalGrossStudySeconds);
+  const displayDistractionText = safeDistractionSeconds < 60
+    ? `${safeDistractionSeconds}s`
+    : `${(safeDistractionSeconds / 60).toFixed(1).replace(/\.0$/, "")}m`;
+
+  const remainingAvailableSeconds = Math.max(0, totalGrossStudySeconds - totalDistractionSeconds);
+
   // Cycle Telemetry
   const completedCycles = activeTimer.pomodoroCyclesCompleted || (isPomodoroTargetReached ? 1 : 0);
   const totalBreakMins = Math.round((activeTimer.totalBreakSeconds || 0) / 60);
-  const totalStudyMins = Math.round(((activeTimer.totalStudySeconds || 0) + (isPomodoro && isPomodoroTargetReached ? 0 : currentElapsed)) / 60);
+  const totalStudyMins = Math.round(totalGrossStudySeconds / 60);
 
   const thoughtsCount = activeSession.thoughts?.length || 0;
-  const totalDistractionMinutes = (activeSession.thoughts || []).reduce(
-    (acc, t) => acc + (t.approx_duration_minutes || 0),
-    0
-  );
-
   const focusRatioPercent = Math.round(currentFocusRatio * 100);
+
+  const handleQuickPingClick = (ping: { title: string; category: any; minutes: number }) => {
+    const reqSec = Math.round(ping.minutes * 60);
+    if (totalGrossStudySeconds < 5) {
+      addThought(ping.title, ping.category, ping.minutes);
+      setToastMsg({
+        text: `Thought noted! (0s deducted — study session just started)`,
+        type: "info",
+      });
+    } else if (remainingAvailableSeconds <= 0) {
+      addThought(ping.title, ping.category, ping.minutes);
+      setToastMsg({
+        text: `Thought noted! (0s deducted — distractions cannot exceed elapsed study time)`,
+        type: "warn",
+      });
+    } else if (reqSec > remainingAvailableSeconds) {
+      const cappedText = remainingAvailableSeconds < 60
+        ? `${remainingAvailableSeconds}s`
+        : `${(remainingAvailableSeconds / 60).toFixed(1)}m`;
+      addThought(ping.title, ping.category, ping.minutes);
+      setToastMsg({
+        text: `Logged "${ping.title}" — deducted ${cappedText} (capped to elapsed study time)`,
+        type: "warn",
+      });
+    } else {
+      addThought(ping.title, ping.category, ping.minutes);
+      setToastMsg({
+        text: `Logged "${ping.title}" (-${ping.minutes === 0.5 ? "30s" : ping.minutes + "m"})`,
+        type: "success",
+      });
+    }
+  };
 
   return (
     <div className="w-full rounded-2xl bg-[#111114] border border-zinc-800/90 shadow-2xl overflow-hidden transition-all">
@@ -467,7 +520,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
               <span>Distractions</span>
             </div>
             <div className="font-mono text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
-              {totalDistractionMinutes}m
+              {displayDistractionText}
             </div>
             <p className="text-[9px] text-zinc-500 mt-0.5">{thoughtsCount} stray pings</p>
           </div>
@@ -484,9 +537,25 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
             <p className="text-[9px] text-zinc-500 mt-0.5">{completedCycles} sprints completed</p>
           </div>
         </div>
+
+        {/* Transient Ping Feedback Toast */}
+        {toastMsg && (
+          <div
+            className={`mt-4 px-3.5 py-2 rounded-xl text-xs font-medium border flex items-center gap-2 animate-slide-up ${
+              toastMsg.type === "warn"
+                ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                : toastMsg.type === "info"
+                ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300"
+                : "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+            }`}
+          >
+            <Brain className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{toastMsg.text}</span>
+          </div>
+        )}
       </div>
 
-      {/* 1-Tap Mind Ping Quick Bar (f2 Custom Quick Pings + f5 Safe Deduction) */}
+      {/* 1-Tap Mind Ping Quick Bar (f2 Custom Quick Pings + f5 Watertight Subtraction) */}
       <div className="px-4 sm:px-6 py-4 border-t border-zinc-800/80 bg-zinc-900/60">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
@@ -494,6 +563,11 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
             <span className="text-xs font-semibold text-zinc-200">
               1-Tap Mind Ping (Subtract stray thoughts)
             </span>
+            {remainingAvailableSeconds <= 0 && totalGrossStudySeconds > 0 && (
+              <span className="text-[10px] font-mono text-amber-400/90 font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                0s deductible remaining
+              </span>
+            )}
           </div>
 
           <button
@@ -509,9 +583,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
           {customQuickPings.map((ping) => (
             <button
               key={ping.id}
-              onClick={() => {
-                addThought(ping.title, ping.category, ping.minutes);
-              }}
+              onClick={() => handleQuickPingClick(ping)}
               className="py-2 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-left transition-all active:scale-95 flex items-center justify-between group"
             >
               <div className="flex items-center gap-1.5 truncate">
@@ -537,6 +609,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
           <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
             {activeSession.thoughts?.map((thought) => {
               const meta = CATEGORY_METADATA[thought.category] || CATEGORY_METADATA.other;
+              const thoughtSec = Math.round((thought.approx_duration_minutes || 0) * 60);
               return (
                 <div
                   key={thought.id}
@@ -544,9 +617,15 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
                 >
                   <span>{meta.icon}</span>
                   <span>{thought.title || meta.label}</span>
-                  <span className="text-rose-400 font-mono font-medium text-[10px]">
-                    -{thought.approx_duration_minutes === 0.5 ? "30s" : `${thought.approx_duration_minutes}m`}
-                  </span>
+                  {thoughtSec <= 0 ? (
+                    <span className="text-zinc-500 font-mono font-medium text-[10px]">0s (noted)</span>
+                  ) : thoughtSec < 60 ? (
+                    <span className="text-rose-400 font-mono font-medium text-[10px]">-{thoughtSec}s</span>
+                  ) : (
+                    <span className="text-rose-400 font-mono font-medium text-[10px]">
+                      -{(thoughtSec / 60).toFixed(1).replace(/\.0$/, "")}m
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -588,7 +667,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         isOpen={isPingModalOpen}
         onClose={() => setIsPingModalOpen(false)}
         onSubmit={(title, category, duration, notes, pinToQuickBar) => {
-          addThought(title, category, duration, notes);
+          handleQuickPingClick({ title, category, minutes: duration });
         }}
       />
     </div>
