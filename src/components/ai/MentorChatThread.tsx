@@ -189,8 +189,9 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
               }
 
               // Handle content streaming chunk
-              if (data.content) {
-                assistantContent += data.content;
+              const chunkText = data.content || data.text;
+              if (chunkText) {
+                assistantContent += chunkText;
                 const updatedStreamMessages = [
                   ...newMessages,
                   {

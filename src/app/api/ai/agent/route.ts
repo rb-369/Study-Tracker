@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
                 controller.enqueue(encoder.encode(eventPayload));
               }
               if (chunk.content) {
-                const contentPayload = `data: ${JSON.stringify({ text: chunk.content })}\n\n`;
+                const contentPayload = `data: ${JSON.stringify({ content: chunk.content, text: chunk.content })}\n\n`;
                 controller.enqueue(encoder.encode(contentPayload));
               }
             }

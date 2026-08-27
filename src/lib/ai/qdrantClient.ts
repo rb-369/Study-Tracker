@@ -69,17 +69,19 @@ export async function indexSessionsInQdrant(sessions: StudySession[]): Promise<b
 
   try {
     // Ensure collection exists
-    const collections = await client.getCollections();
-    const exists = collections.collections.some((c) => c.name === QDRANT_COLLECTION_NAME);
+    try {
+      const collections = await client.getCollections();
+      const exists = collections.collections.some((c) => c.name === QDRANT_COLLECTION_NAME);
 
-    if (!exists) {
-      await client.createCollection(QDRANT_COLLECTION_NAME, {
-        vectors: {
-          size: 64,
-          distance: "Cosine",
-        },
-      });
-    }
+      if (!exists) {
+        await client.createCollection(QDRANT_COLLECTION_NAME, {
+          vectors: {
+            size: 64,
+            distance: "Cosine",
+          },
+        });
+      }
+    } catch {}
 
     const points = sessions.map((s, index) => {
       const summaryText = `${s.subject?.name || "General"} - ${s.topic}: focus score ${s.focus_score}/100, ${Math.round(s.gross_duration_seconds / 60)}m gross, ${Math.round(s.net_focus_seconds / 60)}m net. Distractions: ${s.thoughts?.map((t) => t.title).join(", ") || "none"}. ${s.ai_debrief?.primaryDistractionDiagnosis || ""}`;
@@ -125,6 +127,21 @@ export async function querySessionMemory(
 
   if (client) {
     try {
+      // Auto-create or index collection if not present
+      try {
+        const collections = await client.getCollections();
+        const exists = collections.collections.some((c) => c.name === QDRANT_COLLECTION_NAME);
+        if (!exists) {
+          if (allSessions.length > 0) {
+            await indexSessionsInQdrant(allSessions);
+          } else {
+            await client.createCollection(QDRANT_COLLECTION_NAME, {
+              vectors: { size: 64, distance: "Cosine" },
+            });
+          }
+        }
+      } catch {}
+
       const queryVector = createSimpleEmbedding(query, 64);
       let searchPoints: any[] = [];
 
