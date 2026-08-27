@@ -175,3 +175,24 @@ export interface AnalyticsSummary {
   };
 }
 
+export interface MentorChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  toolEvents?: {
+    tool?: "tavily_search" | "qdrant_memory";
+    details?: string;
+    source?: string;
+  }[];
+}
+
+export interface MentorChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: MentorChatMessage[];
+}
+
+

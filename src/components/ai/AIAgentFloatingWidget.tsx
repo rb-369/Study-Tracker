@@ -5,19 +5,24 @@ import {
   Brain, 
   X, 
   Sparkles, 
-  MessageSquare, 
   Maximize2, 
-  Minimize2,
   ChevronDown
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { MentorChatThread } from "./MentorChatThread";
+import { useMentorChatStore } from "@/lib/store/useMentorChatStore";
 
 const LOCAL_STORAGE_KEY_WIDGET_DISMISSED = "studyflow_ai_widget_dismissed";
 
 export function AIAgentFloatingWidget() {
   const router = useRouter();
   const pathname = usePathname();
+
+  const {
+    activeSession: activeChat,
+    createNewChat,
+    updateChatMessages,
+  } = useMentorChatStore();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -115,6 +120,9 @@ export function AIAgentFloatingWidget() {
           <div className="flex-1 overflow-hidden">
             <MentorChatThread
               isMiniWidget={true}
+              activeChat={activeChat}
+              onUpdateChatMessages={updateChatMessages}
+              onNewChat={createNewChat}
               onOpenFullscreen={() => {
                 setIsOpen(false);
                 router.push("/mentor");

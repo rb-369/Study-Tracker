@@ -10,30 +10,24 @@ import {
   RotateCcw, 
   Copy, 
   Check, 
-  ChevronRight,
-  Zap,
-  BookOpen,
-  ArrowUpRight,
-  Terminal,
-  ShieldAlert
+  ChevronRight, 
+  Zap, 
+  Plus, 
+  BookOpen, 
+  ArrowUpRight, 
+  Terminal, 
+  ShieldAlert,
+  Trash2
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-  toolEvents?: {
-    tool?: "tavily_search" | "qdrant_memory";
-    details?: string;
-    source?: string;
-  }[];
-}
+import { MentorChatMessage, MentorChatSession } from "@/types";
 
 interface MentorChatThreadProps {
   isMiniWidget?: boolean;
   onOpenFullscreen?: () => void;
+  activeChat?: MentorChatSession | null;
+  onUpdateChatMessages?: (chatId: string, messages: MentorChatMessage[]) => void;
+  onNewChat?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -43,11 +37,19 @@ const STARTER_PROMPTS = [
   { icon: "🔬", title: "Active recall vs Spaced repetition", prompt: "Can you search and explain the most effective way to combine active recall testing with spaced repetition intervals?" },
 ];
 
-export function MentorChatThread({ isMiniWidget = false, onOpenFullscreen }: MentorChatThreadProps) {
+export function MentorChatThread({
+  isMiniWidget = false,
+  onOpenFullscreen,
+  activeChat,
+  onUpdateChatMessages,
+  onNewChat,
+}: MentorChatThreadProps) {
   const { sessions, activeSession, activeTimer, netFocusSeconds } = useStudyStore();
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  
+  // Local fallback state if no external store passed (e.g. standalone widget)
+  const [internalMessages, setInternalMessages] = useState<MentorChatMessage[]>([
     {
-      id: "welcome-1",
+      id: "welcome-init",
       role: "assistant",
       content: `### 👋 Hey there! I'm your StudyFlow AI Cognitive Mentor.
 
@@ -57,6 +59,9 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
       timestamp: new Date().toISOString(),
     },
   ]);
+
+  const messages = activeChat?.messages || internalMessages;
+
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -80,7 +85,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
     const userMsgId = `usr-${Date.now()}`;
     const botMsgId = `bot-${Date.now()}`;
 
-    const newMessages: ChatMessage[] = [
+    const newMessages: MentorChatMessage[] = [
       ...messages,
       {
         id: userMsgId,
@@ -90,10 +95,16 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
       },
     ];
 
-    setMessages(newMessages);
+    // Update active chat state
+    if (activeChat && onUpdateChatMessages) {
+      onUpdateChatMessages(activeChat.id, newMessages);
+    } else {
+      setInternalMessages(newMessages);
+    }
+
     setInput("");
     setIsLoading(true);
-    setCurrentToolStatus("Analyzing query & context...");
+    setCurrentToolStatus("Analyzing query & telemetry...");
 
     // Prepare active session context if running
     const activeContext = activeSession
@@ -115,7 +126,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-          allSessions: sessions.slice(0, 30),
+          allSessions: sessions.slice(0, 40),
           activeSessionContext: activeContext,
         }),
       });
@@ -125,239 +136,235 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
       }
 
       const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response stream body");
+
       const decoder = new TextDecoder();
+      let done = false;
 
-      if (reader) {
-        let done = false;
+      // Add placeholder bot message
+      const initialStreamMessages: MentorChatMessage[] = [
+        ...newMessages,
+        {
+          id: botMsgId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date().toISOString(),
+          toolEvents: [],
+        },
+      ];
 
-        // Initialize bot placeholder
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: botMsgId,
-            role: "assistant",
-            content: "",
-            timestamp: new Date().toISOString(),
-            toolEvents: [],
-          },
-        ]);
+      if (activeChat && onUpdateChatMessages) {
+        onUpdateChatMessages(activeChat.id, initialStreamMessages);
+      } else {
+        setInternalMessages(initialStreamMessages);
+      }
 
-        while (!done) {
-          const { value, done: streamDone } = await reader.read();
-          done = streamDone;
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
 
-          if (value) {
-            const rawChunk = decoder.decode(value, { stream: true });
-            const lines = rawChunk.split("\n").filter((l) => l.trim().startsWith("data: "));
+        if (value) {
+          const rawChunk = decoder.decode(value, { stream: true });
+          const lines = rawChunk.split("\n").filter((l) => l.trim().startsWith("data: "));
 
-            for (const line of lines) {
-              const jsonStr = line.replace(/^data: /, "").trim();
-              if (jsonStr === "[DONE]") {
-                done = true;
-                break;
+          for (const line of lines) {
+            const jsonStr = line.replace(/^data: /, "").trim();
+            if (jsonStr === "[DONE]") continue;
+
+            try {
+              const data = JSON.parse(jsonStr);
+
+              // Handle tool event telemetry badge
+              if (data.event) {
+                const ev = data.event;
+                if (ev.type === "tool_start") {
+                  setCurrentToolStatus(ev.details || "Accessing memory tool...");
+                  toolEventsAccumulator.push({ tool: ev.tool, details: ev.details });
+                } else if (ev.type === "tool_end") {
+                  setCurrentToolStatus(null);
+                  toolEventsAccumulator.push({ tool: ev.tool, details: ev.details, source: ev.source });
+                } else if (ev.type === "model_selected") {
+                  setCurrentToolStatus(null);
+                }
               }
 
-              try {
-                const parsed = JSON.parse(jsonStr);
+              // Handle content streaming chunk
+              if (data.content) {
+                assistantContent += data.content;
+                const updatedStreamMessages = [
+                  ...newMessages,
+                  {
+                    id: botMsgId,
+                    role: "assistant" as const,
+                    content: assistantContent,
+                    timestamp: new Date().toISOString(),
+                    toolEvents: [...toolEventsAccumulator],
+                  },
+                ];
 
-                if (parsed.event) {
-                  const ev = parsed.event;
-                  if (ev.type === "tool_start") {
-                    setCurrentToolStatus(ev.details || "Consulting knowledge...");
-                    toolEventsAccumulator.push({ tool: ev.tool, details: ev.details });
-                  } else if (ev.type === "tool_end") {
-                    setCurrentToolStatus(null);
-                    const last = toolEventsAccumulator[toolEventsAccumulator.length - 1];
-                    if (last) {
-                      last.details = ev.details;
-                      last.source = ev.source;
-                    }
-                  } else if (ev.type === "model_selected") {
-                    setCurrentToolStatus(null);
-                  }
+                if (activeChat && onUpdateChatMessages) {
+                  onUpdateChatMessages(activeChat.id, updatedStreamMessages);
+                } else {
+                  setInternalMessages(updatedStreamMessages);
                 }
-
-                if (parsed.text) {
-                  assistantContent += parsed.text;
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === botMsgId
-                        ? { ...msg, content: assistantContent, toolEvents: [...toolEventsAccumulator] }
-                        : msg
-                    )
-                  );
-                }
-              } catch {}
+              }
+            } catch (err) {
+              console.warn("Error parsing stream chunk:", err);
             }
           }
         }
       }
-    } catch (error) {
-      console.error("Chat streaming error:", error);
-      setMessages((prev) => [
-        ...prev,
+    } catch (error: any) {
+      console.error("Agent chat error:", error);
+      const errorMessage = `⚠️ I encountered a temporary connection issue. Please check your internet or API key in settings.\n\n*Error: ${error?.message || "Unknown error"}*`;
+      
+      const errorStreamMessages = [
+        ...newMessages,
         {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          content: "⚠️ I encountered a temporary connection issue. Please try again or rephrase your question.",
+          id: botMsgId,
+          role: "assistant" as const,
+          content: errorMessage,
           timestamp: new Date().toISOString(),
         },
-      ]);
+      ];
+
+      if (activeChat && onUpdateChatMessages) {
+        onUpdateChatMessages(activeChat.id, errorStreamMessages);
+      } else {
+        setInternalMessages(errorStreamMessages);
+      }
     } finally {
       setIsLoading(false);
       setCurrentToolStatus(null);
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedMessageId(id);
-    setTimeout(() => setCopiedMessageId(null), 2000);
+  const handleCopyMessage = (id: string, text: string) => {
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard.writeText(text);
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    }
   };
 
-  const handleClearHistory = () => {
-    setMessages([
-      {
-        id: "welcome-reset",
-        role: "assistant",
-        content: "✨ Conversation reset. What would you like to explore or optimize next?",
-        timestamp: new Date().toISOString(),
-      },
-    ]);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   return (
-    <div className={`flex flex-col h-full ${isMiniWidget ? "text-xs" : "text-sm"}`}>
-      {/* Header bar (in mini widget mode) */}
+    <div className="flex flex-col h-full bg-[#0c0c10] text-zinc-100 select-text">
+      {/* Mini Widget Header */}
       {isMiniWidget && (
-        <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
+        <div className="px-3.5 py-2.5 bg-zinc-900/60 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-semibold text-zinc-200 text-xs">StudyFlow AI Mentor</span>
+            <div className="w-5 h-5 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <Brain className="w-3 h-3" />
+            </div>
+            <span className="text-xs font-semibold text-zinc-200">StudyFlow AI</span>
           </div>
-          {onOpenFullscreen && (
-            <button
-              onClick={onOpenFullscreen}
-              className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-0.5 hover:underline"
-            >
-              <span>Fullscreen</span>
-              <ArrowUpRight className="w-3 h-3" />
-            </button>
-          )}
+
+          <div className="flex items-center gap-1.5">
+            {onNewChat && (
+              <button
+                onClick={onNewChat}
+                className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors text-[11px] flex items-center gap-1"
+                title="New Chat"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onOpenFullscreen && (
+              <button
+                onClick={onOpenFullscreen}
+                className="p-1 rounded-md text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 transition-colors text-[11px] flex items-center gap-1"
+                title="Open Fullscreen Page"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Messages Thread Container */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-        {messages.map((msg) => {
-          const isUser = msg.role === "user";
+      {/* Messages Scroll Area */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 scrollbar-thin scrollbar-thumb-zinc-800">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            {msg.role === "assistant" && (
+              <div className="w-7 h-7 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5 shadow-sm">
+                <Brain className="w-4 h-4" />
+              </div>
+            )}
 
-          return (
             <div
-              key={msg.id}
-              className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-slide-up`}
+              className={`max-w-[86%] sm:max-w-[80%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed transition-all shadow-md ${
+                msg.role === "user"
+                  ? "bg-emerald-600 text-zinc-950 font-medium rounded-tr-sm ml-4"
+                  : "bg-[#14141a] border border-zinc-800 text-zinc-200 rounded-tl-sm space-y-2.5"
+              }`}
             >
-              {!isUser && (
-                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
-                  <Brain className="w-3.5 h-3.5 text-emerald-400" />
+              {/* Tool Execution Badges */}
+              {msg.toolEvents && msg.toolEvents.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-1 border-b border-zinc-800/80 mb-2">
+                  {msg.toolEvents.map((te, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-zinc-900 border border-zinc-700/80 text-zinc-400"
+                    >
+                      {te.tool === "tavily_search" ? (
+                        <Globe className="w-3 h-3 text-teal-400" />
+                      ) : (
+                        <Database className="w-3 h-3 text-indigo-400" />
+                      )}
+                      <span>{te.details || "Context Retrieved"}</span>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              <div
-                className={`max-w-[85%] sm:max-w-[78%] rounded-2xl p-3.5 sm:p-4 leading-relaxed transition-all ${
-                  isUser
-                    ? "bg-emerald-500 text-zinc-950 font-medium rounded-tr-sm shadow-md"
-                    : "bg-[#141418] border border-zinc-800/90 text-zinc-200 rounded-tl-sm shadow-xl"
-                }`}
-              >
-                {/* Tool Badges on Assistant Messages */}
-                {!isUser && msg.toolEvents && msg.toolEvents.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2.5 pb-2 border-b border-zinc-800/80">
-                    {msg.toolEvents.map((t, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-700/60 text-[10px] font-mono text-zinc-400"
-                      >
-                        {t.tool === "tavily_search" ? (
-                          <Globe className="w-2.5 h-2.5 text-teal-400" />
-                        ) : (
-                          <Database className="w-2.5 h-2.5 text-indigo-400" />
-                        )}
-                        <span className="truncate max-w-[200px]">{t.details || t.tool}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Message Content Render with simple markdown formatting */}
-                <div className="prose prose-invert prose-xs max-w-none break-words space-y-2">
-                  {msg.content ? (
-                    msg.content.split("\n").map((line, idx) => {
-                      if (line.startsWith("### ")) {
-                        return (
-                          <h3 key={idx} className="text-sm font-bold text-emerald-400 mt-2 mb-1">
-                            {line.replace("### ", "")}
-                          </h3>
-                        );
-                      }
-                      if (line.startsWith("- ") || line.startsWith("* ")) {
-                        return (
-                          <div key={idx} className="flex items-start gap-1.5 ml-1 text-zinc-300">
-                            <span className="text-emerald-400/80 mt-1 text-[8px]">&bull;</span>
-                            <span>{renderFormattedInline(line.replace(/^[-*]\s+/, ""))}</span>
-                          </div>
-                        );
-                      }
-                      if (/^\d+\.\s/.test(line)) {
-                        return (
-                          <div key={idx} className="flex items-start gap-1.5 ml-1 text-zinc-300">
-                            <span className="font-mono text-[10px] text-emerald-400 font-bold mt-0.5">
-                              {line.match(/^\d+\./)?.[0]}
-                            </span>
-                            <span>{renderFormattedInline(line.replace(/^\d+\.\s+/, ""))}</span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <p key={idx} className={`${line.trim() === "" ? "h-1" : ""}`}>
-                          {renderFormattedInline(line)}
-                        </p>
-                      );
-                    })
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-zinc-500 font-mono text-xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                      Synthesizing cognitive advice...
-                    </span>
-                  )}
-                </div>
-
-                {/* Bottom action bar */}
-                {!isUser && msg.content && (
-                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-zinc-800/60 text-[10px] text-zinc-500 font-mono">
-                    <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <button
-                      onClick={() => copyToClipboard(msg.content, msg.id)}
-                      className="hover:text-zinc-300 flex items-center gap-1 transition-colors p-1"
-                      title="Copy response"
-                    >
-                      {copiedMessageId === msg.id ? (
-                        <Check className="w-3 h-3 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                )}
+              {/* Message Body with clean formatting */}
+              <div className="prose prose-invert prose-xs sm:prose-sm max-w-none break-words whitespace-pre-wrap">
+                {msg.content}
               </div>
-            </div>
-          );
-        })}
 
-        {/* Live tool status banner during streaming */}
+              {/* Message Footer / Copy */}
+              {msg.role === "assistant" && msg.content.length > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60 text-[10px] text-zinc-400 font-mono">
+                  <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  <button
+                    onClick={() => handleCopyMessage(msg.id, msg.content)}
+                    className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
+                    title="Copy to clipboard"
+                  >
+                    {copiedMessageId === msg.id ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Live Tool Execution Spinner Indicator */}
         {currentToolStatus && (
-          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs font-mono text-zinc-400 animate-pulse w-fit">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-900/90 border border-emerald-500/20 text-xs text-emerald-400 font-mono w-fit animate-pulse">
+            <Sparkles className="w-3.5 h-3.5 animate-spin" />
             <span>{currentToolStatus}</span>
           </div>
         )}
@@ -365,106 +372,69 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Starter Prompt Chips (only if conversation has 1 message) */}
+      {/* Starter Prompt Chips (shown if only 1 message or new chat) */}
       {messages.length <= 1 && (
-        <div className="px-4 py-2 border-t border-zinc-800/80 bg-zinc-900/30">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
-            Suggested Prompts
+        <div className="px-4 pb-2">
+          <div className="text-[11px] font-medium text-zinc-400 mb-2 flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-emerald-400" />
+            <span>Suggested Focus Protocols:</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {STARTER_PROMPTS.map((item, idx) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {STARTER_PROMPTS.map((sp, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSendMessage(item.prompt)}
-                className="p-2 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-left transition-all flex items-center gap-2 group text-xs text-zinc-300"
+                onClick={() => handleSendMessage(sp.prompt)}
+                disabled={isLoading}
+                className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800/80 hover:border-emerald-500/30 text-left text-xs text-zinc-300 hover:text-zinc-100 transition-all flex items-start gap-2 group active:scale-[0.99]"
               >
-                <span className="text-sm">{item.icon}</span>
-                <span className="truncate group-hover:text-emerald-300 font-medium">{item.title}</span>
+                <span className="text-sm">{sp.icon}</span>
+                <span className="truncate font-medium group-hover:text-emerald-400 transition-colors">
+                  {sp.title}
+                </span>
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Input Composer */}
-      <div className="p-3 sm:p-4 border-t border-zinc-800/90 bg-[#101014]">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="relative flex items-center gap-2"
-        >
+      {/* Message Input Box */}
+      <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-[#0e0e12]">
+        <div className="relative rounded-2xl bg-zinc-900/90 border border-zinc-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/30 transition-all shadow-inner">
           <textarea
             ref={inputRef}
-            rows={isMiniWidget ? 1 : 2}
+            rows={isMiniWidget ? 2 : 3}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
+            onKeyDown={handleKeyDown}
             placeholder="Ask your AI Mentor about focus, study plans, or past performance..."
-            className="flex-1 py-2.5 pl-3.5 pr-10 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-emerald-500/70 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none transition-colors"
+            className="w-full bg-transparent px-3.5 py-3 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none"
+            disabled={isLoading}
           />
 
-          <div className="flex items-center gap-1">
-            {messages.length > 2 && (
+          <div className="flex items-center justify-between px-3 pb-2 pt-1 border-t border-zinc-800/40">
+            <div className="text-[10px] text-zinc-400 font-mono hidden sm:block">
+              Powered by LangGraph & OpenRouter Free Tier
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline">
+                Shift + Enter for new line
+              </span>
               <button
-                type="button"
-                onClick={handleClearHistory}
-                className="p-2 rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                title="Reset conversation"
+                onClick={() => handleSendMessage()}
+                disabled={!input.trim() || isLoading}
+                className="p-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 disabled:hover:bg-emerald-500 text-zinc-950 font-bold transition-all active:scale-95 flex items-center justify-center shadow-md"
               >
-                <RotateCcw className="w-4 h-4" />
+                {isLoading ? (
+                  <Sparkles className="w-4 h-4 animate-spin text-zinc-950" />
+                ) : (
+                  <Send className="w-4 h-4 text-zinc-950" />
+                )}
               </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:hover:bg-emerald-500 text-zinc-950 transition-all font-bold shadow-md shadow-emerald-500/20"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            </div>
           </div>
-        </form>
-
-        <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1.5 font-mono">
-          <span>Powered by LangGraph & OpenRouter Free Tier</span>
-          <span>Shift + Enter for new line</span>
         </div>
       </div>
     </div>
   );
-}
-
-/**
- * Helper to render bold (`**`), code (`` ` ``), and italics in simple markdown lines
- */
-function renderFormattedInline(text: string): React.ReactNode {
-  // Simple regex parser for bold **text** and `code`
-  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={index} className="text-zinc-100 font-bold">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return (
-        <code
-          key={index}
-          className="px-1 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-emerald-300 font-mono text-[11px]"
-        >
-          {part.slice(1, -1)}
-        </code>
-      );
-    }
-    return part;
-  });
 }
