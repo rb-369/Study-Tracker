@@ -68,7 +68,12 @@ export function SessionEndDebriefModal({ isOpen, onClose }: SessionEndDebriefMod
     onClose();
   };
 
-  const grossSeconds = activeTimer.elapsedSeconds;
+  const isPomodoro = activeTimer.type === "pomodoro";
+  const completedCycles = activeTimer.pomodoroCyclesCompleted || (isPomodoro && activeTimer.elapsedSeconds >= (activeTimer.targetMinutes * 60) ? 1 : 0);
+  const grossSeconds = isPomodoro && activeTimer.pomodoroCyclesCompleted && activeTimer.pomodoroCyclesCompleted > 0
+    ? (activeTimer.totalStudySeconds || 0) + activeTimer.elapsedSeconds
+    : activeTimer.elapsedSeconds;
+  const breakSeconds = activeTimer.totalBreakSeconds || (activeTimer.breakState?.breakElapsedSeconds || 0);
   const thoughtsCount = activeSession?.thoughts?.length || 0;
 
   return (
@@ -85,9 +90,16 @@ export function SessionEndDebriefModal({ isOpen, onClose }: SessionEndDebriefMod
                 <CheckCircle className="w-6 h-6 text-focus" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white tracking-tight">
-                  Wrap Up Focus Block
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-white tracking-tight">
+                    Wrap Up Focus Block
+                  </h2>
+                  {isPomodoro && completedCycles > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                      {completedCycles} {completedCycles === 1 ? "Sprint" : "Sprints"}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">
                   Ready to audit your gross vs. net study time & generate AI debrief
                 </p>
@@ -95,28 +107,32 @@ export function SessionEndDebriefModal({ isOpen, onClose }: SessionEndDebriefMod
             </div>
 
             {/* Quick Session Overview Card */}
-            <div className="grid grid-cols-3 gap-3 my-6">
-              <div className="p-3.5 rounded-2xl bg-surface-elevated/60 border border-border/80 text-center">
-                <span className="text-[11px] text-slate-400 font-semibold block mb-1">Gross Time</span>
-                <span className="text-lg font-mono font-bold text-white">
+            <div className="grid grid-cols-4 gap-2.5 my-6">
+              <div className="p-3 rounded-2xl bg-surface-elevated/60 border border-border/80 text-center">
+                <span className="text-[10px] text-slate-400 font-semibold block mb-1">Study Time</span>
+                <span className="text-base sm:text-lg font-mono font-bold text-white">
                   {formatSecondsToTimer(grossSeconds)}
                 </span>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-focus/15 border border-focus/30 text-center">
-                <span className="text-[11px] text-focus font-semibold block mb-1">Net Focus</span>
-                <span className="text-lg font-mono font-bold text-white">
+              <div className="p-3 rounded-2xl bg-focus/15 border border-focus/30 text-center">
+                <span className="text-[10px] text-focus font-semibold block mb-1">Net Focus</span>
+                <span className="text-base sm:text-lg font-mono font-bold text-white">
                   {formatSecondsToTimer(netFocusSeconds)}
-                </span>
-                <span className="text-[10px] text-focus font-mono block mt-0.5">
-                  {(currentFocusRatio * 100).toFixed(0)}% ratio
                 </span>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-center">
-                <span className="text-[11px] text-amber-400 font-semibold block mb-1">Mind Pings</span>
-                <span className="text-lg font-mono font-bold text-amber-300">
+              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-center">
+                <span className="text-[10px] text-amber-400 font-semibold block mb-1">Distractions</span>
+                <span className="text-base sm:text-lg font-mono font-bold text-amber-300">
                   {thoughtsCount}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-teal-500/10 border border-teal-500/25 text-center">
+                <span className="text-[10px] text-teal-400 font-semibold block mb-1">Break Time</span>
+                <span className="text-base sm:text-lg font-mono font-bold text-teal-300">
+                  {Math.round(breakSeconds / 60)}m
                 </span>
               </div>
             </div>

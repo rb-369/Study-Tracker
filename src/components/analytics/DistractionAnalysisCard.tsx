@@ -111,27 +111,36 @@ export function DistractionAnalysisCard({ distractions, topTitles = [] }: Distra
           })}
         </div>
 
-        {/* Top Trigger Keywords / Titles */}
+        {/* Top Trigger Keywords / Titles & Custom Pings */}
         {topTitles && topTitles.length > 0 && (
           <div className="mt-5 pt-4 border-t border-zinc-800/80">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 mb-2.5">
-              <Tag className="w-3 h-3 text-amber-400" />
-              <span>Frequent Thought Triggers</span>
-            </h4>
+            <div className="flex items-center justify-between mb-2.5">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <Tag className="w-3 h-3 text-amber-400" />
+                <span>Frequent Mind Pings & Triggers</span>
+              </h4>
+              <span className="text-[10px] text-zinc-500 font-mono">
+                {topTitles.length} unique triggers
+              </span>
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {topTitles.map((t, idx) => (
-                <span
-                  key={idx}
-                  className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 flex items-center gap-1.5"
-                >
-                  <span className="text-zinc-100 font-medium truncate max-w-[140px]">
-                    {t.title}
+              {topTitles.map((t, idx) => {
+                const meta = CATEGORY_METADATA[t.category] || CATEGORY_METADATA.other;
+                return (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 flex items-center gap-1.5 hover:border-zinc-700 transition-colors"
+                  >
+                    <span>{meta.icon}</span>
+                    <span className="text-zinc-100 font-medium truncate max-w-[140px]">
+                      {t.title}
+                    </span>
+                    <span className="font-mono text-[10px] text-amber-400 font-semibold">
+                      {t.count}x ({t.totalMinutes}m)
+                    </span>
                   </span>
-                  <span className="font-mono text-[10px] text-amber-400">
-                    {t.count}x
-                  </span>
-                </span>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

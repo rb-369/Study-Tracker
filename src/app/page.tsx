@@ -31,7 +31,7 @@ import { StudySession } from "@/types";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, goals, createSubject } = useStudyStore();
+  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, goals, createSubject, startSession } = useStudyStore();
 
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
@@ -124,7 +124,7 @@ export default function DashboardPage() {
               ) : (
                 /* Ready State Console */
                 <div className="rounded-2xl bg-[#121215] border border-zinc-800 p-6 sm:p-8">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
+                  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
                     <div>
                       <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-semibold">
                         Ready to Focus
@@ -133,17 +133,40 @@ export default function DashboardPage() {
                         No active timer running
                       </h2>
                       <p className="text-xs text-zinc-400 mt-1 max-w-md">
-                        Choose a subject and topic to start logging deep work. Stray thoughts will be captured in 1-tap.
+                        Resume your last deep work block in 1 tap, or customize a new sprint.
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => setIsStartModalOpen(true)}
-                      className="px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-2 shadow-lg shadow-emerald-500/20"
-                    >
-                      <Play className="w-4 h-4 fill-zinc-950" />
-                      <span>Start Focus Block</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                      {/* 1-Tap Quick Resume Last Session */}
+                      {sessions && sessions.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const last = sessions[0];
+                            startSession(
+                              last.subject_id,
+                              last.topic || "Deep Study Block",
+                              last.session_type || "pomodoro",
+                              25,
+                              last.goal_id
+                            );
+                          }}
+                          className="flex-1 lg:flex-initial px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                          title={`Instantly resume ${sessions[0].subject?.name || "Subject"}: ${sessions[0].topic}`}
+                        >
+                          <Zap className="w-4 h-4 fill-white" />
+                          <span>Resume {sessions[0].subject?.name || "Last Block"}</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => setIsStartModalOpen(true)}
+                        className="flex-1 lg:flex-initial px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                      >
+                        <Play className="w-4 h-4 fill-zinc-950" />
+                        <span>Start Focus Block</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Daily Target Progress Bar */}

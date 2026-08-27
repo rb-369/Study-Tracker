@@ -111,7 +111,7 @@ export function SessionDetailsModal({ session, onClose }: SessionDetailsModalPro
               <span>Session Reflection Notes</span>
             </h4>
             <p className="text-xs text-zinc-300 leading-relaxed italic">
-              "{session.session_notes}"
+              &ldquo;{session.session_notes}&rdquo;
             </p>
           </div>
         )}

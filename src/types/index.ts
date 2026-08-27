@@ -1,14 +1,40 @@
+export type SessionType = 'stopwatch' | 'pomodoro' | 'countdown';
 export type SessionStatus = 'active' | 'completed' | 'abandoned';
-export type SessionType = 'stopwatch' | 'pomodoro';
+export type BreakType = 'short' | 'long' | 'custom';
+
+export interface BreakState {
+  isBreakActive: boolean;
+  breakType: BreakType;
+  breakTargetMinutes: number;
+  breakElapsedSeconds: number;
+  isBreakRunning: boolean;
+  breakStartTime: number | null;
+  breakLastStartedAt: number | null;
+  breakAccumulatedSeconds: number;
+}
 
 export interface ActiveTimerState {
   type: SessionType;
   targetMinutes: number;
   elapsedSeconds: number;
   isRunning: boolean;
+  isInitialReady?: boolean; // True when session just created and waiting for user's explicit first Start click
   startTime: number | null;
   lastStartedAt: number | null;
   accumulatedSeconds: number;
+  pomodoroCyclesCompleted?: number;
+  totalStudySeconds?: number;
+  totalBreakSeconds?: number;
+  breakState?: BreakState;
+}
+
+export interface CustomQuickPing {
+  id: string;
+  title: string;
+  category: ThoughtCategory;
+  minutes: number;
+  icon: string;
+  isCustom?: boolean;
 }
 
 export type ThoughtCategory = 
@@ -96,6 +122,8 @@ export interface StudySession {
   session_type: SessionType;
   session_notes?: string;
   focus_score: number;
+  pomodoro_cycles_completed?: number;
+  total_break_seconds?: number;
   ai_debrief?: AIDebrief;
   thoughts?: Thought[];
   created_at: string;

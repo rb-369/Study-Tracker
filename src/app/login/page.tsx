@@ -50,9 +50,14 @@ function AuthErrorBanner({ onDismiss }: { onDismiss: () => void }) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signInWithGoogle, signInAsDemoUser, isAuthenticated } = useStudyStore();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, signInAsDemoUser, isAuthenticated } = useStudyStore();
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
 
   // If already authenticated, redirect to dashboard
   useEffect(() => {
@@ -60,6 +65,37 @@ export default function LoginPage() {
       router.push("/");
     }
   }, [isAuthenticated, router]);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setAuthError("Please enter your email and password.");
+      return;
+    }
+    if (password.length < 6) {
+      setAuthError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setIsLoading(true);
+    setAuthError(null);
+    setAuthSuccessMsg(null);
+
+    try {
+      if (authMode === "signin") {
+        await signInWithEmail(email, password);
+        router.push("/");
+      } else {
+        await signUpWithEmail(email, password, fullName);
+        setAuthSuccessMsg("Account created! Check your email to confirm or log in directly.");
+      }
+    } catch (err: any) {
+      console.warn("Email auth error:", err);
+      setAuthError(err.message || "Authentication failed. Please check your credentials.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -106,72 +142,183 @@ export default function LoginPage() {
         </button>
       </header>
 
-      {/* Hero Section */}
-      <main className="relative z-10 w-full max-w-4xl mx-auto px-6 py-8 sm:py-14 flex flex-col items-center text-center">
+      {/* Hero & Auth Section */}
+      <main className="relative z-10 w-full max-w-4xl mx-auto px-6 py-6 sm:py-10 flex flex-col items-center text-center">
         {/* Eyebrow badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-medium mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-medium mb-5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>The First AI Study Tracker with In-Session Mind Pings</span>
         </div>
 
         {/* Headline */}
-        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white max-w-2xl leading-[1.15]">
+        <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white max-w-2xl leading-[1.18]">
           Stop confusing raw clock time with <span className="text-emerald-400">real focused study.</span>
         </h1>
 
         {/* Subtext */}
-        <p className="text-sm sm:text-base text-zinc-400 max-w-lg mt-4 leading-relaxed">
+        <p className="text-xs sm:text-sm text-zinc-400 max-w-lg mt-3 leading-relaxed">
           Log in-between stray thoughts in 1-tap, isolate net deep work, and receive automated AI debriefs.
         </p>
 
-        {/* Primary Auth Gate CTAs */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full max-w-sm">
-          {/* Sign in with Google Button */}
-          <button
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-            className="w-full py-3 px-5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2.5 shadow-sm"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>{isLoading ? "Connecting to Google..." : "Continue with Google"}</span>
-          </button>
+        {/* Auth Box Container */}
+        <div className="mt-8 w-full max-w-md bg-[#121215] border border-zinc-800/90 rounded-2xl p-6 sm:p-7 shadow-2xl text-left">
+          {/* Tabs: Sign In / Create Account */}
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900/90 border border-zinc-800 mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signin");
+                setAuthError(null);
+                setAuthSuccessMsg(null);
+              }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                authMode === "signin"
+                  ? "bg-zinc-800 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signup");
+                setAuthError(null);
+                setAuthSuccessMsg(null);
+              }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                authMode === "signup"
+                  ? "bg-zinc-800 text-white shadow-sm"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
 
-          {/* Instant Demo CTA */}
-          <button
-            onClick={handleDemoLogin}
-            className="w-full py-3 px-5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-          >
-            <span>Try Guest Demo</span>
-            <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
-          </button>
+          {/* Email / Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-3.5">
+            {authMode === "signup" && (
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Marie Curie"
+                  className="w-full py-2.5 px-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                Email Address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="scholar@domain.com"
+                className="w-full py-2.5 px-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full py-2.5 px-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 mt-2"
+            >
+              {isLoading ? (
+                <span>Authenticating...</span>
+              ) : authMode === "signin" ? (
+                <span>Sign In with Email</span>
+              ) : (
+                <span>Create Free Account</span>
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative flex items-center justify-center my-4">
+            <div className="w-full border-t border-zinc-800" />
+            <span className="bg-[#121215] px-3 text-[10px] uppercase tracking-wider text-zinc-500 font-mono">
+              or
+            </span>
+          </div>
+
+          {/* Google & Demo Actions */}
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2.5"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+            >
+              <span>Try Instant Guest Demo</span>
+              <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
+          </div>
+
+          {authSuccessMsg && (
+            <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs">
+              {authSuccessMsg}
+            </div>
+          )}
+
+          {authError && (
+            <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs">
+              {authError}
+            </div>
+          )}
         </div>
 
         <Suspense fallback={null}>
           <AuthErrorBanner onDismiss={() => router.replace("/login")} />
         </Suspense>
-
-        {authError && (
-          <p className="mt-3 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg max-w-md">
-            {authError}
-          </p>
-        )}
 
         {/* Feature Highlights Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-12 w-full text-left">

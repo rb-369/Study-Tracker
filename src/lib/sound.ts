@@ -58,6 +58,52 @@ export function playPomodoroCompleteChime() {
 }
 
 /**
+ * Plays a refreshing 3-tone chime for break completion.
+ */
+export function playBreakCompleteChime() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const ctx = new AudioContextClass();
+
+    const playTone = (freq: number, startTime: number, duration: number, gainValue = 0.25) => {
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gainNode.gain.setValueAtTime(0.001, startTime);
+      gainNode.gain.exponentialRampToValueAtTime(gainValue, startTime + 0.04);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+
+    const now = ctx.currentTime;
+    // Ascending melodic flourish: F5 -> A5 -> C6
+    playTone(698.46, now, 0.8, 0.25);
+    playTone(880.0, now + 0.18, 0.9, 0.3);
+    playTone(1046.5, now + 0.36, 1.4, 0.35);
+
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 2500);
+  } catch (err) {
+    console.warn("Could not play break chime:", err);
+  }
+}
+
+/**
  * Checks current notification permission state
  */
 export function getNotificationPermission(): NotificationPermission | "unsupported" {

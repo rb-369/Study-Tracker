@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Sparkles, Brain, Clock } from "lucide-react";
+import { X, Sparkles, Brain, Clock, Pin } from "lucide-react";
 import { ThoughtCategory } from "@/types";
 import { CATEGORY_METADATA } from "@/lib/utils";
+import { useStudyStore } from "@/lib/store/useStudyStore";
 
 interface MindPingLoggerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (title: string, category: ThoughtCategory, durationMinutes: number, notes?: string) => void;
+  onSubmit: (title: string, category: ThoughtCategory, durationMinutes: number, notes?: string, pinToQuickBar?: boolean) => void;
 }
 
 const PRESET_TOPICS = [
@@ -25,11 +26,13 @@ const PRESET_TOPICS = [
 const DURATION_PRESETS = [0.5, 1, 2, 3, 5, 10, 15];
 
 export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLoggerModalProps) {
+  const { addCustomQuickPing } = useStudyStore();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<ThoughtCategory>("phone_social");
   const [duration, setDuration] = useState<number>(2);
   const [customDuration, setCustomDuration] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [pinToQuickBar, setPinToQuickBar] = useState(false);
 
   if (!isOpen) return null;
 
@@ -38,7 +41,16 @@ export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLogge
     const finalTitle = title.trim() || CATEGORY_METADATA[category].label;
     const finalDuration = customDuration ? parseFloat(customDuration) || 2 : duration;
     
-    onSubmit(finalTitle, category, Math.max(0.5, finalDuration), notes.trim() || undefined);
+    if (pinToQuickBar) {
+      addCustomQuickPing({
+        title: finalTitle,
+        category,
+        minutes: Math.max(0.5, finalDuration),
+        icon: category === "phone_social" ? "📱" : category === "hunger_snack" ? "☕" : category === "random_idea" ? "💡" : category === "anxiety_stress" ? "💭" : "⚡",
+      });
+    }
+
+    onSubmit(finalTitle, category, Math.max(0.5, finalDuration), notes.trim() || undefined, pinToQuickBar);
     
     // Reset state
     setTitle("");
@@ -46,6 +58,7 @@ export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLogge
     setDuration(2);
     setCustomDuration("");
     setNotes("");
+    setPinToQuickBar(false);
     onClose();
   };
 
@@ -197,6 +210,22 @@ export function MindPingLoggerModal({ isOpen, onClose, onSubmit }: MindPingLogge
                 className="w-16 py-1.5 px-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-center text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
               />
             </div>
+          </div>
+
+          {/* Pin to Quick Bar Toggle */}
+          <div className="pt-1">
+            <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 cursor-pointer hover:border-zinc-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={pinToQuickBar}
+                onChange={(e) => setPinToQuickBar(e.target.checked)}
+                className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              />
+              <div className="flex items-center gap-1.5 text-xs text-zinc-300">
+                <Pin className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-medium">Pin this distraction to 1-Tap Quick Bar</span>
+              </div>
+            </label>
           </div>
 
           {/* Action Buttons: Cancel and Submit */}

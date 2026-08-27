@@ -15,12 +15,18 @@ import {
   TrendingUp,
   X,
   Target,
-  Bell
+  Bell,
+  Coffee,
+  RotateCcw,
+  FastForward,
+  ChevronRight,
+  Flame
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { formatSecondsToTimer, formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { MindPingLoggerModal } from "./MindPingLoggerModal";
 import { getNotificationPermission, requestNotificationPermission } from "@/lib/sound";
+import { BreakType } from "@/types";
 
 interface LiveSessionTimerProps {
   onEndSessionClick: () => void;
@@ -32,7 +38,14 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
     activeTimer,
     pauseSession,
     resumeSession,
+    startBreak,
+    pauseBreak,
+    resumeBreak,
+    endBreak,
+    skipBreak,
+    startNextPomodoroSprint,
     addThought,
+    customQuickPings,
     abandonSession,
     netFocusSeconds,
     currentFocusRatio,
@@ -52,15 +65,6 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
     setNotifPermission(perm);
   };
 
-  // Quick 1-tap categories to log without opening full modal
-  const quickCategories = [
-    { id: "micro_30s", key: "phone_social" as const, label: "30s Micro Ping", icon: "⚡", minutes: 0.5, displayTime: "30s" },
-    { id: "social_3m", key: "phone_social" as const, label: "Social / Phone", icon: "📱", minutes: 3, displayTime: "+3m" },
-    { id: "snack_5m", key: "hunger_snack" as const, label: "Snack / Water", icon: "☕", minutes: 5, displayTime: "+5m" },
-    { id: "idea_2m", key: "random_idea" as const, label: "Random Idea", icon: "💡", minutes: 2, displayTime: "+2m" },
-    { id: "daydream_4m", key: "anxiety_stress" as const, label: "Daydreaming", icon: "💭", minutes: 4, displayTime: "+4m" },
-  ];
-
   // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,29 +80,49 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         setIsPingModalOpen(true);
       } else if (e.code === "Space") {
         e.preventDefault();
-        if (activeTimer.isRunning) {
-          pauseSession();
+        if (activeTimer.breakState?.isBreakActive) {
+          if (activeTimer.breakState.isBreakRunning) {
+            pauseBreak();
+          } else {
+            resumeBreak();
+          }
         } else {
-          resumeSession();
+          if (activeTimer.isRunning) {
+            pauseSession();
+          } else {
+            resumeSession();
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTimer.isRunning, pauseSession, resumeSession, isPingModalOpen, showConfirmAbandon]);
+  }, [activeTimer.isRunning, activeTimer.breakState, pauseSession, resumeSession, pauseBreak, resumeBreak, isPingModalOpen, showConfirmAbandon]);
 
   if (!activeSession) return null;
 
   const linkedGoal = activeSession.goal || (activeSession.goal_id ? goals.find((g) => g.id === activeSession.goal_id) : undefined);
 
-  const grossSeconds = activeTimer.elapsedSeconds;
   const isPomodoro = activeTimer.type === "pomodoro";
   const pomodoroTargetSeconds = (activeTimer.targetMinutes || 25) * 60;
-  const isPomodoroComplete = isPomodoro && grossSeconds >= pomodoroTargetSeconds;
-  const pomodoroRemainingSeconds = Math.max(0, pomodoroTargetSeconds - grossSeconds);
-  const pomodoroOvertimeSeconds = Math.max(0, grossSeconds - pomodoroTargetSeconds);
-  const pomodoroPercent = Math.min(100, Math.round((grossSeconds / pomodoroTargetSeconds) * 100));
+  const currentElapsed = activeTimer.elapsedSeconds;
+  const isPomodoroTargetReached = isPomodoro && currentElapsed >= pomodoroTargetSeconds;
+  const pomodoroRemainingSeconds = Math.max(0, pomodoroTargetSeconds - currentElapsed);
+  const pomodoroPercent = Math.min(100, Math.round((currentElapsed / pomodoroTargetSeconds) * 100));
+
+  // Break State Calculations
+  const isBreakActive = !!activeTimer.breakState?.isBreakActive;
+  const breakTargetSeconds = (activeTimer.breakState?.breakTargetMinutes || 5) * 60;
+  const breakElapsedSeconds = activeTimer.breakState?.breakElapsedSeconds || 0;
+  const breakRemainingSeconds = Math.max(0, breakTargetSeconds - breakElapsedSeconds);
+  const isBreakCompleted = isBreakActive && breakElapsedSeconds >= breakTargetSeconds;
+  const breakPercent = Math.min(100, Math.round((breakElapsedSeconds / breakTargetSeconds) * 100));
+
+  // Cycle Telemetry
+  const completedCycles = activeTimer.pomodoroCyclesCompleted || (isPomodoroTargetReached ? 1 : 0);
+  const totalBreakMins = Math.round((activeTimer.totalBreakSeconds || 0) / 60);
+  const totalStudyMins = Math.round(((activeTimer.totalStudySeconds || 0) + (isPomodoro && isPomodoroTargetReached ? 0 : currentElapsed)) / 60);
 
   const thoughtsCount = activeSession.thoughts?.length || 0;
   const totalDistractionMinutes = (activeSession.thoughts || []).reduce(
@@ -109,9 +133,9 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
   const focusRatioPercent = Math.round(currentFocusRatio * 100);
 
   return (
-    <div className="w-full rounded-2xl bg-[#111114] border border-zinc-800/90 shadow-xl overflow-hidden">
+    <div className="w-full rounded-2xl bg-[#111114] border border-zinc-800/90 shadow-2xl overflow-hidden transition-all">
       {/* Header telemetry ribbon */}
-      <div className="px-5 py-4 border-b border-zinc-800/80 bg-zinc-900/40 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-4 sm:px-6 py-3.5 border-b border-zinc-800/80 bg-zinc-900/40 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span
             className="w-3 h-3 rounded-full flex-shrink-0"
@@ -125,6 +149,12 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
                 {activeTimer.type.toUpperCase()}
               </span>
+              {isPomodoro && completedCycles > 0 && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-indigo-400" />
+                  <span>{completedCycles} {completedCycles === 1 ? "Sprint" : "Sprints"} Done</span>
+                </span>
+              )}
               {linkedGoal && (
                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                   <Target className="w-3 h-3" />
@@ -159,9 +189,29 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
           )}
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
-            <span className={`w-2 h-2 rounded-full ${activeTimer.isRunning ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isBreakActive
+                  ? activeTimer.breakState?.isBreakRunning
+                    ? "bg-teal-400 animate-pulse"
+                    : "bg-amber-400"
+                  : activeTimer.isRunning
+                  ? "bg-emerald-400 animate-pulse"
+                  : activeTimer.isInitialReady
+                  ? "bg-indigo-400 animate-pulse"
+                  : "bg-amber-400"
+              }`}
+            />
             <span className="text-xs font-mono text-zinc-300">
-              {activeTimer.isRunning ? "FLOW ACTIVE" : "PAUSED"}
+              {isBreakActive
+                ? activeTimer.breakState?.isBreakRunning
+                  ? "BREAK RUNNING"
+                  : "BREAK PAUSED"
+                : activeTimer.isRunning
+                ? "FLOW ACTIVE"
+                : activeTimer.isInitialReady
+                ? "READY TO START"
+                : "PAUSED"}
             </span>
           </div>
 
@@ -175,110 +225,269 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         </div>
       </div>
 
-      {/* Main Timer Display */}
-      <div className="px-6 py-8 sm:py-10 flex flex-col items-center justify-center">
-        {/* Digital Clock */}
-        <div className="text-center select-none">
-          <div className={`font-mono text-6xl sm:text-8xl font-black tracking-tight tabular-nums drop-shadow-sm transition-colors ${
-            isPomodoroComplete ? "text-emerald-400" : "text-white"
-          }`}>
-            {isPomodoro
-              ? isPomodoroComplete
-                ? `+${formatSecondsToTimer(pomodoroOvertimeSeconds)}`
-                : formatSecondsToTimer(pomodoroRemainingSeconds)
-              : formatSecondsToTimer(grossSeconds)}
+      {/* Main Timer Body */}
+      <div className="px-4 sm:px-8 py-8 sm:py-10 flex flex-col items-center justify-center">
+        
+        {/* ========================================================================= */}
+        {/* VIEW 1: BREAK MODE ACTIVE                                                 */}
+        {/* ========================================================================= */}
+        {isBreakActive ? (
+          <div className="w-full max-w-xl text-center space-y-6 animate-fade-in">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/25 text-teal-400 text-xs font-semibold">
+              <Coffee className="w-3.5 h-3.5" />
+              <span>{activeTimer.breakState?.breakType === "long" ? "15-Minute Long Break" : "5-Minute Rejuvenation Break"}</span>
+            </div>
+
+            {/* Break Countdown Clock */}
+            <div className="select-none py-2">
+              <div className="font-mono text-5xl sm:text-7xl md:text-8xl font-black tracking-tight tabular-nums text-teal-300 drop-shadow-sm">
+                {formatSecondsToTimer(breakRemainingSeconds)}
+              </div>
+              <p className="text-xs text-zinc-400 font-mono mt-2">
+                {isBreakCompleted ? "Break Complete! Ready for next focus sprint." : `${breakPercent}% of break elapsed`}
+              </p>
+            </div>
+
+            {/* Calming Rest Prompt */}
+            <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-300 max-w-md mx-auto leading-relaxed">
+              🧘 Look 20 feet away, stretch your back, drink water. Your focus timer is safely on hold.
+            </div>
+
+            {/* Break Controls */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto pt-2">
+              {activeTimer.breakState?.isBreakRunning ? (
+                <button
+                  onClick={pauseBreak}
+                  className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  <Pause className="w-4 h-4 text-amber-400" />
+                  <span>Pause Break</span>
+                </button>
+              ) : (
+                <button
+                  onClick={resumeBreak}
+                  className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-teal-500 hover:bg-teal-400 text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20"
+                >
+                  <Play className="w-4 h-4 fill-zinc-950" />
+                  <span>Resume Break</span>
+                </button>
+              )}
+
+              <button
+                onClick={startNextPomodoroSprint}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+              >
+                <Play className="w-4 h-4 fill-zinc-950" />
+                <span>Start Next Sprint</span>
+              </button>
+
+              <button
+                onClick={onEndSessionClick}
+                className="w-full sm:w-auto py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-semibold border border-zinc-800 transition-all"
+              >
+                <span>End Session</span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-1.5 mt-2">
-            {isPomodoroComplete && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono animate-pulse">
-                TARGET REACHED
-              </span>
-            )}
-            <p className="text-xs uppercase tracking-widest text-zinc-500 font-mono">
-              {isPomodoro
-                ? isPomodoroComplete
-                  ? `Overtime Flow (${pomodoroPercent}% of ${activeTimer.targetMinutes}m target)`
-                  : `Pomodoro Sprint (${pomodoroPercent}% Complete)`
-                : "Active Session Clock"}
+        ) : isPomodoroTargetReached ? (
+          /* ========================================================================= */
+          /* VIEW 2: POMODORO SPRINT COMPLETE (PROMPT BREAK)                           */
+          /* ========================================================================= */
+          <div className="w-full max-w-xl text-center space-y-6 animate-fade-in">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold animate-pulse">
+              <CheckCircle className="w-4 h-4" />
+              <span>Sprint #{completedCycles} Complete ({activeTimer.targetMinutes}m Target Reached!)</span>
+            </div>
+
+            <div className="select-none py-2">
+              <div className="font-mono text-5xl sm:text-7xl md:text-8xl font-black tracking-tight tabular-nums text-emerald-400">
+                {formatSecondsToTimer(pomodoroTargetSeconds)}
+              </div>
+              <p className="text-xs uppercase tracking-widest text-zinc-400 font-mono mt-2">
+                Focus Target Achieved &bull; Timer Paused
+              </p>
+            </div>
+
+            {/* Break Choice Action Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-lg mx-auto">
+              <button
+                onClick={() => startBreak(5, "short")}
+                className="p-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-left font-bold transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 flex flex-col justify-between group"
+              >
+                <div className="flex items-center justify-between">
+                  <Coffee className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <div className="mt-3">
+                  <div className="text-xs font-black">5m Short Break</div>
+                  <p className="text-[10px] text-zinc-900/80 font-medium">Recommended recharge</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => startBreak(15, "long")}
+                className="p-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-left font-bold transition-all active:scale-[0.98] shadow-lg shadow-indigo-600/20 flex flex-col justify-between group"
+              >
+                <div className="flex items-center justify-between">
+                  <Sparkles className="w-4 h-4 text-indigo-200" />
+                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <div className="mt-3">
+                  <div className="text-xs font-black">15m Long Break</div>
+                  <p className="text-[10px] text-indigo-200 font-medium">For deep cognitive rest</p>
+                </div>
+              </button>
+
+              <button
+                onClick={skipBreak}
+                className="p-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-left text-zinc-300 font-semibold transition-all active:scale-[0.98] flex flex-col justify-between group"
+              >
+                <div className="flex items-center justify-between">
+                  <FastForward className="w-4 h-4 text-zinc-400" />
+                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <div className="mt-3">
+                  <div className="text-xs font-bold text-zinc-200">Skip Break</div>
+                  <p className="text-[10px] text-zinc-500">Jump to next sprint</p>
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={onEndSessionClick}
+                className="text-xs text-zinc-400 hover:text-zinc-200 underline font-medium"
+              >
+                Or complete session now & view AI debrief
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ========================================================================= */
+          /* VIEW 3: STANDARD FOCUS TIMER (STOPWATCH OR POMODORO COUNTDOWN)            */
+          /* ========================================================================= */
+          <div className="w-full text-center select-none space-y-2">
+            {/* Digital Clock with Fluid Responsive Typography (f6 Mobile overflow fix) */}
+            <div className="w-full flex items-center justify-center overflow-hidden px-2">
+              <div className="font-mono text-5xl sm:text-7xl md:text-8xl font-black tracking-tight tabular-nums text-white drop-shadow-sm leading-none max-w-full">
+                {isPomodoro
+                  ? formatSecondsToTimer(pomodoroRemainingSeconds)
+                  : formatSecondsToTimer(currentElapsed)}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-1.5 mt-2">
+              {activeTimer.isInitialReady && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-mono animate-pulse">
+                  READY &bull; PRESS START WHEN SEATED
+                </span>
+              )}
+              {!activeTimer.isInitialReady && (
+                <p className="text-xs uppercase tracking-widest text-zinc-500 font-mono">
+                  {isPomodoro
+                    ? `Pomodoro Sprint (${pomodoroPercent}% of ${activeTimer.targetMinutes}m)`
+                    : "Active Deep Work Clock"}
+                </p>
+              )}
+            </div>
+
+            {/* Primary Action Buttons */}
+            <div className="flex items-center justify-center gap-3 mt-6 pt-2 w-full max-w-sm mx-auto">
+              {activeTimer.isRunning ? (
+                <button
+                  onClick={pauseSession}
+                  className="flex-1 py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-zinc-700"
+                >
+                  <Pause className="w-4 h-4 text-amber-400" />
+                  <span>Pause Focus</span>
+                </button>
+              ) : activeTimer.isInitialReady ? (
+                <button
+                  onClick={resumeSession}
+                  className="flex-1 py-3.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25"
+                >
+                  <Play className="w-4 h-4 fill-zinc-950" />
+                  <span>Start Focus Block</span>
+                </button>
+              ) : (
+                <button
+                  onClick={resumeSession}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                >
+                  <Play className="w-4 h-4 fill-zinc-950" />
+                  <span>Resume Focus</span>
+                </button>
+              )}
+
+              <button
+                onClick={onEndSessionClick}
+                className="flex-1 py-3 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <Square className="w-3.5 h-3.5 fill-zinc-950" />
+                <span>Complete & Debrief</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-zinc-500 font-mono mt-3">
+              Shortcut: <span className="text-zinc-400 bg-zinc-800/80 px-1 py-0.5 rounded border border-zinc-700">Space</span> toggle timer &bull; <span className="text-zinc-400 bg-zinc-800/80 px-1 py-0.5 rounded border border-zinc-700">T</span> log thought
             </p>
           </div>
-        </div>
+        )}
 
-        {/* Real-time Focus Split Telemetry */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-8 w-full max-w-xl">
+        {/* Real-time Focus Split Telemetry Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-8 w-full max-w-2xl">
           {/* True Net Focus */}
-          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
-            <div className="flex items-center justify-center gap-1.5 text-emerald-400 text-xs font-semibold mb-1">
-              <Zap className="w-3.5 h-3.5" />
+          <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
+            <div className="flex items-center justify-center gap-1 text-emerald-400 text-[11px] font-semibold mb-0.5">
+              <Zap className="w-3 h-3" />
               <span>Net Focus</span>
             </div>
-            <div className="font-mono text-xl sm:text-2xl font-bold text-zinc-100 tabular-nums">
+            <div className="font-mono text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
               {formatSecondsToTimer(netFocusSeconds)}
             </div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">True deep work</p>
+            <p className="text-[9px] text-zinc-500 mt-0.5">Deep cognition</p>
           </div>
 
           {/* Efficiency Ratio */}
-          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
-            <div className="flex items-center justify-center gap-1.5 text-zinc-300 text-xs font-semibold mb-1">
-              <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
+            <div className="flex items-center justify-center gap-1 text-zinc-300 text-[11px] font-semibold mb-0.5">
+              <TrendingUp className="w-3 h-3 text-indigo-400" />
               <span>Focus Ratio</span>
             </div>
-            <div className="font-mono text-xl sm:text-2xl font-bold text-zinc-100 tabular-nums">
+            <div className="font-mono text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
               {focusRatioPercent}%
             </div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">Flow efficiency</p>
+            <p className="text-[9px] text-zinc-500 mt-0.5">Purity score</p>
           </div>
 
           {/* Mind Pings Lost */}
-          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
-            <div className="flex items-center justify-center gap-1.5 text-rose-400 text-xs font-semibold mb-1">
-              <Brain className="w-3.5 h-3.5" />
+          <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
+            <div className="flex items-center justify-center gap-1 text-rose-400 text-[11px] font-semibold mb-0.5">
+              <Brain className="w-3 h-3" />
               <span>Distractions</span>
             </div>
-            <div className="font-mono text-xl sm:text-2xl font-bold text-zinc-100 tabular-nums">
+            <div className="font-mono text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
               {totalDistractionMinutes}m
             </div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">{thoughtsCount} stray pings</p>
+            <p className="text-[9px] text-zinc-500 mt-0.5">{thoughtsCount} stray pings</p>
+          </div>
+
+          {/* Sprints / Break Time */}
+          <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 text-center">
+            <div className="flex items-center justify-center gap-1 text-teal-400 text-[11px] font-semibold mb-0.5">
+              <Coffee className="w-3 h-3" />
+              <span>Break Time</span>
+            </div>
+            <div className="font-mono text-lg sm:text-xl font-bold text-zinc-100 tabular-nums">
+              {totalBreakMins}m
+            </div>
+            <p className="text-[9px] text-zinc-500 mt-0.5">{completedCycles} sprints completed</p>
           </div>
         </div>
-
-        {/* Primary Controls */}
-        <div className="flex items-center gap-3 mt-7 w-full max-w-sm">
-          {activeTimer.isRunning ? (
-            <button
-              onClick={pauseSession}
-              className="flex-1 py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-zinc-700"
-            >
-              <Pause className="w-4 h-4 text-amber-400" />
-              <span>Pause Focus</span>
-            </button>
-          ) : (
-            <button
-              onClick={resumeSession}
-              className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-            >
-              <Play className="w-4 h-4 fill-zinc-950" />
-              <span>Resume Focus</span>
-            </button>
-          )}
-
-          <button
-            onClick={onEndSessionClick}
-            className="flex-1 py-3 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-          >
-            <Square className="w-3.5 h-3.5 fill-zinc-950" />
-            <span>Complete & Debrief</span>
-          </button>
-        </div>
-
-        <p className="text-[11px] text-zinc-500 font-mono mt-3">
-          Shortcut: <span className="text-zinc-400 bg-zinc-800/80 px-1 py-0.5 rounded border border-zinc-700">Space</span> toggle timer &bull; <span className="text-zinc-400 bg-zinc-800/80 px-1 py-0.5 rounded border border-zinc-700">T</span> log thought
-        </p>
       </div>
 
-      {/* 1-Tap Mind Ping Quick Bar */}
-      <div className="px-5 py-4 border-t border-zinc-800/80 bg-zinc-900/60">
+      {/* 1-Tap Mind Ping Quick Bar (f2 Custom Quick Pings + f5 Safe Deduction) */}
+      <div className="px-4 sm:px-6 py-4 border-t border-zinc-800/80 bg-zinc-900/60">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
             <Brain className="w-3.5 h-3.5 text-emerald-400" />
@@ -289,27 +498,30 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
           <button
             onClick={() => setIsPingModalOpen(true)}
-            className="text-[11px] text-emerald-400 hover:underline font-medium"
+            className="text-[11px] text-emerald-400 hover:underline font-medium flex items-center gap-1"
           >
-            + Custom Log
+            <Plus className="w-3 h-3" />
+            <span>Custom Log</span>
           </button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {quickCategories.map((cat) => (
+          {customQuickPings.map((ping) => (
             <button
-              key={cat.id}
+              key={ping.id}
               onClick={() => {
-                addThought(cat.label, cat.key, cat.minutes);
+                addThought(ping.title, ping.category, ping.minutes);
               }}
-              className="py-2 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-left transition-all active:scale-95 flex items-center justify-between"
+              className="py-2 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-left transition-all active:scale-95 flex items-center justify-between group"
             >
               <div className="flex items-center gap-1.5 truncate">
-                <span className="text-xs">{cat.icon}</span>
-                <span className="text-xs font-medium text-zinc-300 truncate">{cat.label}</span>
+                <span className="text-xs">{ping.icon || "💡"}</span>
+                <span className="text-xs font-medium text-zinc-300 truncate group-hover:text-white">
+                  {ping.title}
+                </span>
               </div>
               <span className="text-[10px] font-mono text-zinc-500 font-semibold flex-shrink-0 ml-1">
-                {cat.displayTime}
+                {ping.minutes === 0.5 ? "30s" : `+${ping.minutes}m`}
               </span>
             </button>
           ))}
@@ -318,7 +530,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
       {/* Logged in-session thoughts feed */}
       {thoughtsCount > 0 && (
-        <div className="px-5 py-3.5 border-t border-zinc-800/80 bg-zinc-950/60">
+        <div className="px-4 sm:px-6 py-3.5 border-t border-zinc-800/80 bg-zinc-950/60">
           <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-2">
             In-Session Stray Thoughts ({thoughtsCount})
           </div>
@@ -375,7 +587,7 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
       <MindPingLoggerModal
         isOpen={isPingModalOpen}
         onClose={() => setIsPingModalOpen(false)}
-        onSubmit={(title, category, duration, notes) => {
+        onSubmit={(title, category, duration, notes, pinToQuickBar) => {
           addThought(title, category, duration, notes);
         }}
       />
