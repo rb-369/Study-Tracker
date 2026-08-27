@@ -31,10 +31,10 @@ interface MentorChatThreadProps {
 }
 
 const STARTER_PROMPTS = [
-  { icon: "⚡", title: "Beat afternoon brain fog", prompt: "I'm feeling mental fatigue and afternoon brain fog. What is a 5-minute neuroscience-backed reset protocol to restore deep focus?" },
-  { icon: "📊", title: "Analyze my distraction triggers", prompt: "Based on my logged study history, what are my top distraction patterns and how can I optimize my Net Focus Ratio?" },
-  { icon: "🎯", title: "3-day high-intensity exam plan", prompt: "Help me design a 3-day deep work sprint plan for upcoming exams using active recall and interleaving." },
-  { icon: "🔬", title: "Active recall vs Spaced repetition", prompt: "Can you search and explain the most effective way to combine active recall testing with spaced repetition intervals?" },
+  { icon: "⚡", title: "Beat brain fog", prompt: "I'm feeling mental fatigue. What is a 5-minute neuroscience-backed reset protocol to restore deep focus?" },
+  { icon: "📊", title: "Analyze distraction triggers", prompt: "Based on my logged study history, what are my top distraction patterns and how can I optimize my Net Focus Ratio?" },
+  { icon: "🎯", title: "3-day exam sprint plan", prompt: "Help me design a 3-day deep work sprint plan for upcoming exams using active recall and interleaving." },
+  { icon: "🔬", title: "Active recall science", prompt: "Can you search and explain the most effective way to combine active recall testing with spaced repetition intervals?" },
 ];
 
 export function MentorChatThread({
@@ -188,7 +188,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
                 }
               }
 
-              // Handle content streaming chunk
+              // Handle content streaming chunk (interoperable with content or text keys)
               const chunkText = data.content || data.text;
               if (chunkText) {
                 assistantContent += chunkText;
@@ -226,6 +226,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
           role: "assistant" as const,
           content: errorMessage,
           timestamp: new Date().toISOString(),
+          toolEvents: [...toolEventsAccumulator],
         },
       ];
 
@@ -237,15 +238,6 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
     } finally {
       setIsLoading(false);
       setCurrentToolStatus(null);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  };
-
-  const handleCopyMessage = (id: string, text: string) => {
-    if (typeof navigator !== "undefined") {
-      navigator.clipboard.writeText(text);
-      setCopiedMessageId(id);
-      setTimeout(() => setCopiedMessageId(null), 2000);
     }
   };
 
@@ -256,28 +248,60 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
     }
   };
 
+  const handleCopyMessage = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
+  const handleClearHistory = () => {
+    if (activeChat && onUpdateChatMessages) {
+      onUpdateChatMessages(activeChat.id, [
+        {
+          id: "welcome-reset",
+          role: "assistant",
+          content: "Conversation history reset. Ready for a new study session query!",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } else {
+      setInternalMessages([
+        {
+          id: "welcome-reset",
+          role: "assistant",
+          content: "Conversation history reset. Ready for a new study session query!",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#0c0c10] text-zinc-100 select-text">
+    <div className="flex flex-col h-full min-h-0 bg-[#09090b] lg:bg-[#121216] text-zinc-100 overflow-hidden relative">
       {/* Mini Widget Header */}
       {isMiniWidget && (
-        <div className="px-3.5 py-2.5 bg-zinc-900/60 border-b border-zinc-800/80 flex items-center justify-between">
+        <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <Brain className="w-3 h-3" />
+            <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <Brain className="w-3.5 h-3.5" />
             </div>
-            <span className="text-xs font-semibold text-zinc-200">StudyFlow AI</span>
+            <div>
+              <div className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                <span>AI Study Mentor</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+              <div className="text-[10px] text-zinc-500 font-mono">Cognitive Telemetry</div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {onNewChat && (
-              <button
-                onClick={onNewChat}
-                className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors text-[11px] flex items-center gap-1"
-                title="New Chat"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleClearHistory}
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors text-[10px]"
+              title="Reset Chat"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
             {onOpenFullscreen && (
               <button
                 onClick={onOpenFullscreen}
@@ -291,24 +315,24 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
         </div>
       )}
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 scrollbar-thin scrollbar-thumb-zinc-800">
+      {/* Messages Scroll Area (Takes all available space) */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-3.5 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-800">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex gap-2 sm:gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5 shadow-sm">
-                <Brain className="w-4 h-4" />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5 shadow-sm">
+                <Brain className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             )}
 
             <div
-              className={`max-w-[86%] sm:max-w-[80%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed transition-all shadow-md ${
+              className={`max-w-[88%] sm:max-w-[82%] rounded-2xl p-3.5 sm:p-4 text-xs sm:text-sm leading-relaxed transition-all shadow-md ${
                 msg.role === "user"
-                  ? "bg-emerald-600 text-zinc-950 font-medium rounded-tr-sm ml-4"
-                  : "bg-[#14141a] border border-zinc-800 text-zinc-200 rounded-tl-sm space-y-2.5"
+                  ? "bg-emerald-600 text-zinc-950 font-medium rounded-tr-sm ml-3"
+                  : "bg-[#131318] border border-zinc-800 text-zinc-200 rounded-tl-sm space-y-2"
               }`}
             >
               {/* Tool Execution Badges */}
@@ -337,7 +361,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
 
               {/* Message Footer / Copy */}
               {msg.role === "assistant" && msg.content.length > 0 && (
-                <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60 text-[10px] text-zinc-400 font-mono">
+                <div className="flex items-center justify-between pt-1.5 border-t border-zinc-800/60 text-[10px] text-zinc-400 font-mono">
                   <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   <button
                     onClick={() => handleCopyMessage(msg.id, msg.content)}
@@ -364,7 +388,7 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
 
         {/* Live Tool Execution Spinner Indicator */}
         {currentToolStatus && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-900/90 border border-emerald-500/20 text-xs text-emerald-400 font-mono w-fit animate-pulse">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-emerald-500/20 text-xs text-emerald-400 font-mono w-fit animate-pulse">
             <Sparkles className="w-3.5 h-3.5 animate-spin" />
             <span>{currentToolStatus}</span>
           </div>
@@ -375,18 +399,18 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
 
       {/* Starter Prompt Chips (shown if only 1 message or new chat) */}
       {messages.length <= 1 && (
-        <div className="px-4 pb-2">
-          <div className="text-[11px] font-medium text-zinc-400 mb-2 flex items-center gap-1.5">
+        <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
+          <div className="text-[11px] font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
             <Sparkles className="w-3 h-3 text-emerald-400" />
             <span>Suggested Focus Protocols:</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {STARTER_PROMPTS.map((sp, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSendMessage(sp.prompt)}
                 disabled={isLoading}
-                className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800/80 hover:border-emerald-500/30 text-left text-xs text-zinc-300 hover:text-zinc-100 transition-all flex items-start gap-2 group active:scale-[0.99]"
+                className="p-2 sm:p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800/80 hover:border-emerald-500/30 text-left text-xs text-zinc-300 hover:text-zinc-100 transition-all flex items-center gap-2 group active:scale-[0.99]"
               >
                 <span className="text-sm">{sp.icon}</span>
                 <span className="truncate font-medium group-hover:text-emerald-400 transition-colors">
@@ -398,41 +422,32 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
         </div>
       )}
 
-      {/* Message Input Box */}
-      <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-[#0e0e12]">
-        <div className="relative rounded-2xl bg-zinc-900/90 border border-zinc-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/30 transition-all shadow-inner">
+      {/* Message Input Box (Docked Snug at Bottom) */}
+      <div className="p-2.5 sm:p-3.5 border-t border-zinc-800/80 bg-[#0c0c10] flex-shrink-0">
+        <div className="relative rounded-2xl bg-zinc-900/90 border border-zinc-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/30 transition-all shadow-inner flex items-center px-3 py-1.5 gap-2">
           <textarea
             ref={inputRef}
-            rows={isMiniWidget ? 2 : 3}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask your AI Mentor about focus, study plans, or past performance..."
-            className="w-full bg-transparent px-3.5 py-3 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none"
+            placeholder="Ask AI Mentor about focus, strategies..."
+            className="flex-1 bg-transparent py-1.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none max-h-28 min-h-[32px] leading-relaxed"
             disabled={isLoading}
           />
 
-          <div className="flex items-center justify-between px-3 pb-2 pt-1 border-t border-zinc-800/40">
-            <div className="text-[10px] text-zinc-400 font-mono hidden sm:block">
-              Powered by LangGraph & OpenRouter Free Tier
-            </div>
-
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline">
-                Shift + Enter for new line
-              </span>
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={!input.trim() || isLoading}
-                className="p-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 disabled:hover:bg-emerald-500 text-zinc-950 font-bold transition-all active:scale-95 flex items-center justify-center shadow-md"
-              >
-                {isLoading ? (
-                  <Sparkles className="w-4 h-4 animate-spin text-zinc-950" />
-                ) : (
-                  <Send className="w-4 h-4 text-zinc-950" />
-                )}
-              </button>
-            </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!input.trim() || isLoading}
+              className="p-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 disabled:hover:bg-emerald-500 text-zinc-950 font-bold transition-all active:scale-95 flex items-center justify-center shadow-md"
+            >
+              {isLoading ? (
+                <Sparkles className="w-4 h-4 animate-spin text-zinc-950" />
+              ) : (
+                <Send className="w-4 h-4 text-zinc-950" />
+              )}
+            </button>
           </div>
         </div>
       </div>
