@@ -143,3 +143,24 @@ create index if not exists idx_thoughts_session on public.thoughts(session_id);
 create index if not exists idx_thoughts_user on public.thoughts(user_id);
 create index if not exists idx_subjects_user on public.subjects(user_id);
 create index if not exists idx_goals_user on public.exam_goals(user_id);
+
+-- 6. AI Mentor Chats Table (Multi-Session Persistent History)
+create table if not exists public.mentor_chats (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  title text not null default 'New Conversation',
+  messages jsonb not null default '[]'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- RLS for AI Mentor Chats
+alter table public.mentor_chats enable row level security;
+
+create policy "Users can manage own mentor chats"
+  on public.mentor_chats for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists idx_mentor_chats_user on public.mentor_chats(user_id, updated_at desc);
+

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { MentorChatSession, MentorChatMessage } from "@/types";
 import { generateUUID } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { useStudyStore } from "@/lib/store/useStudyStore";
 
 const LOCAL_STORAGE_KEY_CHATS = "studyflow_mentor_chats";
 const LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID = "studyflow_mentor_active_chat_id";
@@ -19,82 +21,164 @@ I analyze your focus telemetry, diagnose distraction loops, search evidence-base
 };
 
 export function useMentorChatStore() {
+  const { user } = useStudyStore();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
+
   const [sessions, setSessions] = useState<MentorChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load chats from LocalStorage on mount
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_CHATS);
-      const savedActiveId = localStorage.getItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID);
+  const activeChatIdRef = useRef<string | null>(null);
+  activeChatIdRef.current = activeChatId;
 
-      if (saved) {
-        const parsed: MentorChatSession[] = JSON.parse(saved);
-        if (parsed.length > 0) {
-          setSessions(parsed);
-          const validActive = parsed.find((s) => s.id === savedActiveId);
-          setActiveChatId(validActive ? validActive.id : parsed[0].id);
-          setIsLoaded(true);
-          return;
+  // 1. Load chats from Supabase (if logged in) or LocalStorage fallback
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadChats() {
+      // Step A: Load from local cache first for instant UI response
+      let localSessions: MentorChatSession[] = [];
+      let savedActiveId: string | null = null;
+
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem(LOCAL_STORAGE_KEY_CHATS);
+          savedActiveId = localStorage.getItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID);
+          if (saved) {
+            localSessions = JSON.parse(saved);
+          }
+        } catch {}
+      }
+
+      // Step B: If logged into Supabase, query cloud database
+      if (user?.id) {
+        try {
+          const { data, error } = await supabase
+            .from("mentor_chats")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("updated_at", { ascending: false });
+
+          if (!error && data && data.length > 0) {
+            const dbSessions: MentorChatSession[] = data.map((row: any) => ({
+              id: row.id,
+              title: row.title || "Conversation",
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+              messages: Array.isArray(row.messages) ? row.messages : [],
+            }));
+
+            if (isMounted) {
+              setSessions(dbSessions);
+              const validActive = dbSessions.find((s) => s.id === savedActiveId);
+              const targetActiveId = validActive ? validActive.id : dbSessions[0].id;
+              setActiveChatId(targetActiveId);
+              setIsLoaded(true);
+
+              // Cache to local
+              if (typeof window !== "undefined") {
+                localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify(dbSessions));
+                localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID, targetActiveId);
+              }
+              return;
+            }
+          }
+        } catch (dbError) {
+          console.warn("Supabase mentor_chats load error (using local cache):", dbError);
         }
       }
 
-      // Initial Default Chat
-      const initialId = generateUUID();
-      const defaultChat: MentorChatSession = {
-        id: initialId,
-        title: "New Conversation",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messages: [INITIAL_WELCOME_MESSAGE],
-      };
+      // Step C: Fallback to local sessions
+      if (isMounted) {
+        if (localSessions.length > 0) {
+          setSessions(localSessions);
+          const validActive = localSessions.find((s) => s.id === savedActiveId);
+          setActiveChatId(validActive ? validActive.id : localSessions[0].id);
+        } else {
+          // Initialize first default chat
+          const initialId = generateUUID();
+          const defaultChat: MentorChatSession = {
+            id: initialId,
+            title: "New Conversation",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messages: [INITIAL_WELCOME_MESSAGE],
+          };
+          setSessions([defaultChat]);
+          setActiveChatId(initialId);
 
-      setSessions([defaultChat]);
-      setActiveChatId(initialId);
-      localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify([defaultChat]));
-      localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID, initialId);
-    } catch (e) {
-      console.warn("Failed to load mentor chat history:", e);
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
-
-  // Save changes to LocalStorage
-  const persistSessions = useCallback((updatedSessions: MentorChatSession[], newActiveId?: string | null) => {
-    setSessions(updatedSessions);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify(updatedSessions));
-        if (newActiveId !== undefined) {
-          setActiveChatId(newActiveId);
-          if (newActiveId) {
-            localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID, newActiveId);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify([defaultChat]));
+            localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID, initialId);
           }
         }
-      } catch (e) {
-        console.warn("Failed to save mentor chat history:", e);
+        setIsLoaded(true);
       }
     }
-  }, []);
 
-  // Create a brand new chat session (like ChatGPT "+ New Chat")
-  const createNewChat = useCallback(() => {
+    loadChats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, supabase]);
+
+  // Persist locally
+  const persistSessions = useCallback(
+    async (updatedSessions: MentorChatSession[], newActiveId?: string | null) => {
+      setSessions(updatedSessions);
+
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify(updatedSessions));
+          if (newActiveId !== undefined) {
+            setActiveChatId(newActiveId);
+            if (newActiveId) {
+              localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_CHAT_ID, newActiveId);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to persist mentor chat history locally:", e);
+        }
+      }
+    },
+    []
+  );
+
+  // Create a brand new chat session (saves in Supabase DB & LocalStorage)
+  const createNewChat = useCallback(async () => {
     const newId = generateUUID();
+    const now = new Date().toISOString();
     const newSession: MentorChatSession = {
       id: newId,
       title: "New Conversation",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       messages: [INITIAL_WELCOME_MESSAGE],
     };
 
     const updated = [newSession, ...sessions];
-    persistSessions(updated, newId);
+    await persistSessions(updated, newId);
+
+    // Sync to Supabase DB if authenticated
+    if (user?.id) {
+      try {
+        await supabase.from("mentor_chats").insert({
+          id: newId,
+          user_id: user.id,
+          title: newSession.title,
+          messages: newSession.messages,
+          created_at: now,
+          updated_at: now,
+        });
+      } catch (err) {
+        console.warn("Failed to insert new chat in Supabase:", err);
+      }
+    }
+
     return newSession;
-  }, [sessions, persistSessions]);
+  }, [sessions, persistSessions, user?.id, supabase]);
 
   // Select an existing chat
   const selectChat = useCallback((id: string) => {
@@ -104,61 +188,115 @@ export function useMentorChatStore() {
     }
   }, []);
 
-  // Delete a chat session
-  const deleteChat = useCallback((id: string) => {
-    const remaining = sessions.filter((s) => s.id !== id);
-    if (remaining.length === 0) {
-      // If deleted last chat, create a fresh one
-      const newId = generateUUID();
-      const freshChat: MentorChatSession = {
-        id: newId,
-        title: "New Conversation",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messages: [INITIAL_WELCOME_MESSAGE],
-      };
-      persistSessions([freshChat], newId);
-    } else {
-      const nextActive = activeChatId === id ? remaining[0].id : activeChatId;
-      persistSessions(remaining, nextActive);
-    }
-  }, [sessions, activeChatId, persistSessions]);
+  // Delete a chat session (from Supabase DB & LocalStorage)
+  const deleteChat = useCallback(
+    async (id: string) => {
+      const remaining = sessions.filter((s) => s.id !== id);
 
-  // Update messages in active chat & auto-derive smart title from first user prompt
-  const updateChatMessages = useCallback((chatId: string, messages: MentorChatMessage[]) => {
-    const firstUserMsg = messages.find((m) => m.role === "user");
+      if (remaining.length === 0) {
+        const newId = generateUUID();
+        const freshChat: MentorChatSession = {
+          id: newId,
+          title: "New Conversation",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: [INITIAL_WELCOME_MESSAGE],
+        };
+        await persistSessions([freshChat], newId);
+      } else {
+        const nextActive = activeChatIdRef.current === id ? remaining[0].id : activeChatIdRef.current;
+        await persistSessions(remaining, nextActive);
+      }
 
-    setSessions((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id === chatId) {
-          let title = s.title;
-          if (title === "New Conversation" && firstUserMsg?.content) {
-            title = firstUserMsg.content.slice(0, 32).trim() + (firstUserMsg.content.length > 32 ? "..." : "");
-          }
-          return {
-            ...s,
-            title,
-            messages,
-            updatedAt: new Date().toISOString(),
-          };
+      // Sync delete to Supabase DB
+      if (user?.id) {
+        try {
+          await supabase.from("mentor_chats").delete().eq("id", id).eq("user_id", user.id);
+        } catch (err) {
+          console.warn("Failed to delete chat in Supabase:", err);
         }
-        return s;
+      }
+    },
+    [sessions, persistSessions, user?.id, supabase]
+  );
+
+  // Update messages in active chat & save to DB
+  const updateChatMessages = useCallback(
+    async (chatId: string, messages: MentorChatMessage[]) => {
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      const now = new Date().toISOString();
+
+      let targetTitle = "Conversation";
+
+      setSessions((prev) => {
+        const updated = prev.map((s) => {
+          if (s.id === chatId) {
+            let title = s.title;
+            if (title === "New Conversation" && firstUserMsg?.content) {
+              title = firstUserMsg.content.slice(0, 36).trim() + (firstUserMsg.content.length > 36 ? "..." : "");
+            }
+            targetTitle = title;
+            return {
+              ...s,
+              title,
+              messages,
+              updatedAt: now,
+            };
+          }
+          return s;
+        });
+
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify(updated));
+          } catch {}
+        }
+        return updated;
       });
 
-      if (typeof window !== "undefined") {
+      // Sync to Supabase DB if user is authenticated
+      if (user?.id) {
         try {
-          localStorage.setItem(LOCAL_STORAGE_KEY_CHATS, JSON.stringify(updated));
-        } catch {}
+          await supabase
+            .from("mentor_chats")
+            .upsert({
+              id: chatId,
+              user_id: user.id,
+              title: targetTitle,
+              messages,
+              updated_at: now,
+            });
+        } catch (err) {
+          console.warn("Failed to update chat in Supabase:", err);
+        }
       }
-      return updated;
-    });
-  }, []);
+    },
+    [user?.id, supabase]
+  );
 
   // Rename a chat session
-  const renameChat = useCallback((id: string, newTitle: string) => {
-    const updated = sessions.map((s) => (s.id === id ? { ...s, title: newTitle.trim() || "Conversation" } : s));
-    persistSessions(updated);
-  }, [sessions, persistSessions]);
+  const renameChat = useCallback(
+    async (id: string, newTitle: string) => {
+      const cleanTitle = newTitle.trim() || "Conversation";
+      const now = new Date().toISOString();
+
+      const updated = sessions.map((s) => (s.id === id ? { ...s, title: cleanTitle, updatedAt: now } : s));
+      await persistSessions(updated);
+
+      if (user?.id) {
+        try {
+          await supabase
+            .from("mentor_chats")
+            .update({ title: cleanTitle, updated_at: now })
+            .eq("id", id)
+            .eq("user_id", user.id);
+        } catch (err) {
+          console.warn("Failed to rename chat in Supabase:", err);
+        }
+      }
+    },
+    [sessions, persistSessions, user?.id, supabase]
+  );
 
   const activeSession = sessions.find((s) => s.id === activeChatId) || sessions[0] || null;
 
