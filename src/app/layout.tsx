@@ -4,6 +4,7 @@ import "./globals.css";
 import { StudyProvider } from "@/lib/store/useStudyStore";
 import { AIAgentFloatingWidget } from "@/components/ai/AIAgentFloatingWidget";
 import { GlobalBuddySyncContainer } from "@/components/social/GlobalBuddySyncContainer";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -41,6 +42,7 @@ export default function RootLayout({
           {children}
           <GlobalBuddySyncContainer />
           <AIAgentFloatingWidget />
+          <MobileBottomNav />
         </StudyProvider>
       </body>
     </html>
