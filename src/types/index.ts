@@ -45,12 +45,24 @@ export type ThoughtCategory =
   | 'urgent_chore'
   | 'other';
 
+export * from './social';
+export * from './gamification';
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
   avatar_url?: string;
   target_daily_minutes: number;
+  handle?: string;
+  bio?: string;
+  timezone?: string;
+  level?: number;
+  xp?: number;
+  privacy_mode?: 'friends_only' | 'public' | 'ghost';
+  age_verified?: boolean;
+  active_subject_topic?: string;
+  is_studying?: boolean;
   created_at: string;
 }
 

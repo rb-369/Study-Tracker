@@ -7,6 +7,8 @@ import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
 import { generateUUID, formatSecondsToTimer } from "@/lib/utils";
 import { playPomodoroCompleteChime, playBreakCompleteChime, sendStudyNotification, updateLiveTimerTitle, resetTabTitle } from "@/lib/sound";
+import { calculateSessionXP, awardUserXP } from "@/lib/gamification/xpEngine";
+import { contributeSessionToGroupChallenges } from "@/lib/gamification/challengeEngine";
 
 interface StudyContextType {
   user: UserProfile | null;
@@ -286,6 +288,35 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   // Fetch Cloud data from Supabase
   const loadSupabaseData = async (userId: string) => {
     try {
+      // 0. Fetch & Sync Profile with Timezone
+      const detectedTz = typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+      const { data: profData } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (profData) {
+        setUser((prev) => {
+          const merged: UserProfile = {
+            id: userId,
+            email: profData.email || prev?.email || '',
+            full_name: profData.full_name || prev?.full_name || 'Learner',
+            avatar_url: profData.avatar_url || prev?.avatar_url,
+            target_daily_minutes: profData.target_daily_minutes || 180,
+            handle: profData.handle || `@user_${userId.slice(0, 5)}`,
+            bio: profData.bio || '',
+            timezone: profData.timezone || detectedTz,
+            level: profData.level || 1,
+            xp: profData.xp || 0,
+            privacy_mode: profData.privacy_mode || 'friends_only',
+            age_verified: profData.age_verified ?? false,
+            created_at: profData.created_at || prev?.created_at || new Date().toISOString(),
+          };
+          localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(merged));
+          return merged;
+        });
+
+        if (!profData.timezone || profData.timezone === 'UTC') {
+          supabase.from('profiles').update({ timezone: detectedTz }).eq('id', userId).then();
+        }
+      }
+
       // 1. Fetch Subjects
       const { data: subjData, error: subjErr } = await supabase
         .from('subjects')
@@ -1521,6 +1552,26 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
             console.error("Supabase thoughts insert error:", thoughtErr);
           }
         }
+
+        // Gamification: Award Focus XP with honest metacognition rewards
+        const xpCalc = calculateSessionXP(
+          completedSession.net_focus_seconds,
+          completedSession.gross_duration_seconds,
+          !!sessionNotes,
+          (completedSession.thoughts || []).length
+        );
+
+        if (xpCalc.totalEarnedXP > 0) {
+          const xpRes = await awardUserXP(user.id, xpCalc.totalEarnedXP, "focus_duration", user.timezone || "UTC");
+          if (xpRes) {
+            setUser((prev) => prev ? { ...prev, xp: xpRes.newXP, level: xpRes.newLevel } : null);
+          }
+        }
+
+        // Group Challenge Progress Contribution
+        const netHours = completedSession.net_focus_seconds / 3600;
+        await contributeSessionToGroupChallenges(user.id, netHours);
+
       } catch (err) {
         console.error("Failed to sync session to Supabase:", err);
       }
@@ -1565,9 +1616,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         await supabase
           .from("profiles")
           .update({
-            target_daily_minutes: updates.target_daily_minutes,
-            full_name: updates.full_name,
-            avatar_url: updates.avatar_url,
+            ...updates,
             updated_at: new Date().toISOString(),
           })
           .eq("id", user.id);

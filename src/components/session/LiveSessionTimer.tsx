@@ -21,12 +21,16 @@ import {
   FastForward,
   ChevronRight,
   Flame,
-  Settings2
+  Settings2,
+  Sun,
+  Wind
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { formatSecondsToTimer, formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { MindPingLoggerModal } from "./MindPingLoggerModal";
 import { ManageQuickPingsModal } from "./ManageQuickPingsModal";
+import { BreakGamesHubModal } from "../games/BreakGamesHubModal";
+import { useWakeLock } from "@/lib/hooks/useWakeLock";
 import { getNotificationPermission, requestNotificationPermission } from "@/lib/sound";
 import { BreakType } from "@/types";
 
@@ -56,9 +60,24 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
 
   const [isPingModalOpen, setIsPingModalOpen] = useState(false);
   const [isManagePingsModalOpen, setIsManagePingsModalOpen] = useState(false);
+  const [isBreakGameModalOpen, setIsBreakGameModalOpen] = useState(false);
   const [showConfirmAbandon, setShowConfirmAbandon] = useState(false);
   const [notifPermission, setNotifPermission] = useState<string>("default");
   const [toastMsg, setToastMsg] = useState<{ text: string; type: "info" | "warn" | "success" } | null>(null);
+
+  const { isLocked: isWakeLocked, isSupported: isWakeSupported, requestLock, releaseLock } = useWakeLock();
+
+  const handleToggleWakeLock = async () => {
+    if (isWakeLocked) {
+      releaseLock();
+      setToastMsg({ text: "Screen sleep restored", type: "info" });
+    } else {
+      const ok = await requestLock();
+      if (ok) {
+        setToastMsg({ text: "Screen will stay awake during session", type: "success" });
+      }
+    }
+  };
 
   useEffect(() => {
     setNotifPermission(getNotificationPermission());
@@ -225,6 +244,21 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {isWakeSupported && (
+            <button
+              onClick={handleToggleWakeLock}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${
+                isWakeLocked
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30 font-semibold"
+                  : "bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border-zinc-700"
+              }`}
+              title={isWakeLocked ? "Screen keep-awake is ON (click to disable)" : "Click to keep screen awake during session"}
+            >
+              <Sun className={`w-3.5 h-3.5 ${isWakeLocked ? "text-amber-400 animate-spin-slow" : "text-zinc-400"}`} />
+              <span className="hidden sm:inline text-[11px]">{isWakeLocked ? "Awake" : "Sleep"}</span>
+            </button>
+          )}
+
           {notifPermission === "default" && (
             <button
               onClick={handleToggleNotifications}
@@ -304,9 +338,16 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
               </p>
             </div>
 
-            {/* Calming Rest Prompt */}
-            <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-300 max-w-md mx-auto leading-relaxed">
-              🧘 Look 20 feet away, stretch your back, drink water. Your focus timer is safely on hold.
+            {/* Calming Rest Prompt & Brain Oasis Button */}
+            <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs text-zinc-300 max-w-md mx-auto leading-relaxed flex flex-col sm:flex-row items-center justify-between gap-3">
+              <span className="text-left">🧘 Look 20 feet away, stretch your back, drink water.</span>
+              <button
+                onClick={() => setIsBreakGameModalOpen(true)}
+                className="w-full sm:w-auto px-3 py-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
+                <span>Open Brain Oasis</span>
+              </button>
             </div>
 
             {/* Break Controls */}
@@ -689,6 +730,16 @@ export function LiveSessionTimer({ onEndSessionClick }: LiveSessionTimerProps) {
       <ManageQuickPingsModal
         isOpen={isManagePingsModalOpen}
         onClose={() => setIsManagePingsModalOpen(false)}
+      />
+
+      {/* Break Time Brain Oasis & Focus Mini-Games Modal */}
+      <BreakGamesHubModal
+        isOpen={isBreakGameModalOpen}
+        onClose={() => setIsBreakGameModalOpen(false)}
+        onStartNextSprint={() => {
+          setIsBreakGameModalOpen(false);
+          startNextPomodoroSprint();
+        }}
       />
     </div>
   );

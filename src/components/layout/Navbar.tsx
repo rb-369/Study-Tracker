@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Sparkles, Play, LogOut } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
+import { UserLevelBadge } from "@/components/gamification/UserLevelBadge";
 
 interface NavbarProps {
   onOpenNewSession?: () => void;
@@ -26,6 +27,7 @@ export function Navbar({ onOpenNewSession }: NavbarProps) {
       </Link>
 
       <div className="flex items-center gap-2">
+        <UserLevelBadge level={user?.level || 1} xp={user?.xp || 0} compact />
         {activeSession ? (
           <Link
             href="/"

@@ -14,10 +14,12 @@ import {
   CheckCircle2,
   Plus,
   Target,
-  Brain
+  Brain,
+  Users
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { cn } from "@/lib/utils";
+import { UserLevelBadge } from "@/components/gamification/UserLevelBadge";
 
 interface SidebarProps {
   onOpenNewSession?: () => void;
@@ -30,6 +32,7 @@ export function Sidebar({ onOpenNewSession, onOpenNewSubject }: SidebarProps) {
 
   const navItems = [
     { label: "Focus Console", href: "/", icon: Flame },
+    { label: "Social & Groups", href: "/social", icon: Users },
     { label: "AI Mentor", href: "/mentor", icon: Brain },
     { label: "Exam Goals", href: "/goals", icon: Target },
     { label: "Analytics", href: "/analytics", icon: BarChart3 },
@@ -163,8 +166,10 @@ export function Sidebar({ onOpenNewSession, onOpenNewSubject }: SidebarProps) {
         </div>
       </nav>
 
-      {/* User Footer Profile */}
-      <div className="p-3 border-t border-zinc-800/80">
+      {/* User Level Badge & Profile */}
+      <div className="p-3 border-t border-zinc-800/80 space-y-2">
+        <UserLevelBadge level={user?.level || 1} xp={user?.xp || 0} />
+
         <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/60">
           <div className="flex items-center gap-2 overflow-hidden">
             {user?.avatar_url ? (
