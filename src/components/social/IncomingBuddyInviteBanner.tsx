@@ -42,18 +42,15 @@ export function IncomingBuddyInviteBanner({
       try {
         const { data } = await supabase
           .from('buddy_sessions')
-          .select(`
-            *,
-            initiator:profiles!buddy_sessions_initiator_id_fkey(*)
-          `)
+          .select('*')
           .eq('buddy_id', currentUser.id)
           .in('status', ['inviting', 'pending_break'])
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (data) {
-          setPendingInvite(data as BuddySession);
+          enrichAndSetInvite(data as BuddySession);
         }
       } catch {}
     };
