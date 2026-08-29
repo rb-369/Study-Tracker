@@ -83,6 +83,9 @@ export function IncomingBuddyInviteBanner({
 
     fetchPending();
 
+    // Fast polling fallback for reliable mobile/LTE background sync
+    const pollInterval = setInterval(fetchPending, 3000);
+
     const channel = supabase
       .channel(`incoming_buddy_${currentUser.id}`)
       .on(
@@ -117,6 +120,7 @@ export function IncomingBuddyInviteBanner({
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [currentUser, supabase]);

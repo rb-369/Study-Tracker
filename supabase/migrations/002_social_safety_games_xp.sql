@@ -353,3 +353,19 @@ create index if not exists idx_group_members_group on public.group_members(group
 create index if not exists idx_group_members_user on public.group_members(user_id);
 create index if not exists idx_group_messages_group on public.group_messages(group_id, created_at asc);
 create index if not exists idx_xp_logs_user_date on public.user_xp_logs(user_id, local_date);
+
+-- ============================================================================
+-- SECTION 5: REALTIME REPLICATION (For live study buddy and chat sync)
+-- ============================================================================
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'buddy_sessions') then
+    alter publication supabase_realtime add table public.buddy_sessions;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'group_messages') then
+    alter publication supabase_realtime add table public.group_messages;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'friend_requests') then
+    alter publication supabase_realtime add table public.friend_requests;
+  end if;
+end $$;

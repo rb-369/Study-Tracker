@@ -55,12 +55,46 @@ export function StudyBuddyInviteModal({
     }
   }, [isOpen, targetFriend, subjects, selectedSubjectId]);
 
-  // Realtime subscription: Listen for friend accepting or declining
+  // Realtime subscription + Active Poller fallback: Listen for friend accepting or declining
   useEffect(() => {
-    if (!sentSession) return;
+    if (!sentSession || sentSession.status === 'active' || sentSession.status === 'declined') return;
 
+    let isSubscribed = true;
+
+    const handleSessionActivated = (updated: BuddySession) => {
+      if (!isSubscribed) return;
+      const fullSession: BuddySession = {
+        ...updated,
+        initiator: currentUser,
+        buddy: targetFriend,
+      };
+      onStartSynchronizedSession(fullSession);
+      onClose();
+    };
+
+    // 1. Fast Poller Fallback (every 1.5s) to guarantee instant trigger on mobile/LTE
+    const interval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('buddy_sessions')
+          .select('*')
+          .eq('id', sentSession.id)
+          .single();
+
+        if (data && !error) {
+          const fetched = data as BuddySession;
+          if (fetched.status === 'active') {
+            handleSessionActivated(fetched);
+          } else if (fetched.status === 'declined') {
+            setSentSession((prev) => prev ? { ...prev, status: 'declined' } : null);
+          }
+        }
+      } catch {}
+    }, 1500);
+
+    // 2. Realtime WebSocket Channel
     const channel = supabase
-      .channel(`buddy_session_${sentSession.id}`)
+      .channel(`buddy_session_watch_${sentSession.id}`)
       .on(
         'postgres_changes',
         {
@@ -72,8 +106,7 @@ export function StudyBuddyInviteModal({
         (payload) => {
           const updated = payload.new as BuddySession;
           if (updated.status === 'active') {
-            onStartSynchronizedSession(updated);
-            onClose();
+            handleSessionActivated(updated);
           } else if (updated.status === 'declined') {
             setSentSession((prev) => prev ? { ...prev, status: 'declined' } : null);
           }
@@ -82,9 +115,11 @@ export function StudyBuddyInviteModal({
       .subscribe();
 
     return () => {
+      isSubscribed = false;
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [sentSession, supabase, onStartSynchronizedSession, onClose]);
+  }, [sentSession, supabase, onStartSynchronizedSession, onClose, currentUser, targetFriend]);
 
   if (!isOpen) return null;
 
