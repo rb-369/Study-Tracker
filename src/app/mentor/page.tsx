@@ -26,6 +26,7 @@ import { useStudyStore } from "@/lib/store/useStudyStore";
 import { useMentorChatStore } from "@/lib/store/useMentorChatStore";
 import { formatMinutesToDisplay } from "@/lib/utils";
 import { MentorChatThread } from "@/components/ai/MentorChatThread";
+import { MobileNav } from "@/components/layout/MobileNav";
 import Link from "next/link";
 
 export default function MentorPage() {
@@ -245,7 +246,7 @@ export default function MentorPage() {
         </div>
 
         {/* Right Side: Full-Height Interactive Mentor Chat Cockpit */}
-        <div className="flex-1 lg:col-span-8 h-full min-h-0 flex flex-col bg-[#09090b] lg:bg-[#121216] lg:border lg:border-zinc-800 lg:rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex-1 lg:col-span-8 h-full min-h-0 flex flex-col bg-[#09090b] lg:bg-[#121216] lg:border lg:border-zinc-800 lg:rounded-2xl shadow-2xl overflow-hidden pb-14 lg:pb-0">
           <MentorChatThread
             isMiniWidget={false}
             activeChat={activeChat}
@@ -254,6 +255,7 @@ export default function MentorPage() {
           />
         </div>
       </div>
+      <MobileNav />
     </div>
   );
 }
