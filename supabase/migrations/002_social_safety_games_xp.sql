@@ -355,12 +355,38 @@ create index if not exists idx_group_messages_group on public.group_messages(gro
 create index if not exists idx_xp_logs_user_date on public.user_xp_logs(user_id, local_date);
 
 -- ============================================================================
--- SECTION 5: REALTIME REPLICATION (For live study buddy and chat sync)
+-- SECTION 5: REALTIME REPLICATION & BUDDY BREAK MESSAGES
 -- ============================================================================
+create table if not exists public.buddy_messages (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  sender_id uuid references public.profiles(id) on delete cascade not null,
+  sender_name text not null default 'Learner',
+  content text not null,
+  created_at timestamptz default now()
+);
+
+alter table public.buddy_messages enable row level security;
+
+drop policy if exists "Users can view messages for their buddy sessions" on public.buddy_messages;
+create policy "Users can view messages for their buddy sessions"
+  on public.buddy_messages for select
+  using (auth.uid() is not null);
+
+drop policy if exists "Users can insert messages into buddy sessions" on public.buddy_messages;
+create policy "Users can insert messages into buddy sessions"
+  on public.buddy_messages for insert
+  with check (auth.uid() = sender_id);
+
+create index if not exists idx_buddy_messages_session on public.buddy_messages(session_id, created_at asc);
+
 do $$
 begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'buddy_sessions') then
     alter publication supabase_realtime add table public.buddy_sessions;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'buddy_messages') then
+    alter publication supabase_realtime add table public.buddy_messages;
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'group_messages') then
     alter publication supabase_realtime add table public.group_messages;

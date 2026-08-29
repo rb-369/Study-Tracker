@@ -70,10 +70,33 @@ export interface BuddySession {
   start_time?: string | null;
   initiator_pings: number;
   buddy_pings: number;
-  high_fives: number;
+  high_fives?: number;
   created_at: string;
   initiator?: ExtendedUserProfile;
   buddy?: ExtendedUserProfile;
+}
+
+export interface BuddyMessage {
+  id: string;
+  session_id: string;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  created_at: string;
+}
+
+export interface BuddyLivePresence {
+  user_id: string;
+  full_name: string;
+  handle?: string;
+  subject_name: string;
+  topic: string;
+  target_minutes: number;
+  remaining_seconds: number;
+  is_paused: boolean;
+  is_on_break: boolean;
+  pings_count: number;
+  last_updated: string;
 }
 
 export interface StudyGroup {
