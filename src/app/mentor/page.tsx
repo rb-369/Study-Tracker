@@ -27,6 +27,7 @@ import { useMentorChatStore } from "@/lib/store/useMentorChatStore";
 import { formatMinutesToDisplay } from "@/lib/utils";
 import { MentorChatThread } from "@/components/ai/MentorChatThread";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { Sidebar } from "@/components/layout/Sidebar";
 import Link from "next/link";
 
 export default function MentorPage() {
@@ -52,10 +53,15 @@ export default function MentorPage() {
     : 100;
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] bg-[#09090b] text-zinc-100 flex flex-col overflow-hidden selection:bg-emerald-500 selection:text-zinc-950">
-      {/* Top Header */}
-      <header className="flex-shrink-0 h-14 border-b border-zinc-800/80 bg-[#0d0d11]/90 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between z-30">
-        <div className="flex items-center gap-2.5 sm:gap-3">
+    <div className="flex h-[100dvh] max-h-[100dvh] bg-[#09090b] text-zinc-100 overflow-hidden selection:bg-emerald-500 selection:text-zinc-950">
+      {/* Desktop Collapsible Sidebar */}
+      <Sidebar />
+
+      {/* Main Mentor Workspace */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Top Header */}
+        <header className="flex-shrink-0 h-14 border-b border-zinc-800/80 bg-[#0d0d11]/90 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between z-30">
+          <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Back to Dashboard Button */}
           <Link
             href="/"
@@ -254,6 +260,7 @@ export default function MentorPage() {
             onNewChat={createNewChat}
           />
         </div>
+      </div>
       </div>
       <MobileNav />
     </div>

@@ -26,6 +26,8 @@ import { FriendsList } from '@/components/social/FriendsList';
 import { IncomingBuddyInviteBanner } from '@/components/social/IncomingBuddyInviteBanner';
 import { StudyBuddySyncModal } from '@/components/social/StudyBuddySyncModal';
 import { MobileNav } from '@/components/layout/MobileNav';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Navbar } from '@/components/layout/Navbar';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
@@ -185,11 +187,18 @@ export default function SocialHubPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 pb-20 pt-8 px-4 sm:px-6 max-w-6xl mx-auto">
-      
-      {/* Top Banner with Back Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-screen bg-[#09090b]">
+      {/* Desktop Collapsible Sidebar */}
+      <Sidebar />
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-8">
+        <Navbar />
+
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+          {/* Top Banner with Back Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
+            <div className="flex items-center gap-3">
           <Link
             href="/"
             className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-all flex items-center justify-center active:scale-95 shadow-sm"
@@ -552,7 +561,9 @@ export default function SocialHubPage() {
           </div>
         </div>
       )}
+        </main>
+      </div>
       <MobileNav />
-    </main>
+    </div>
   );
 }
