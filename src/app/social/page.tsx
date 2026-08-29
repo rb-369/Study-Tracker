@@ -17,7 +17,8 @@ import {
   Eye, 
   ChevronRight,
   Search,
-  BookOpen
+  BookOpen,
+  ArrowLeft
 } from 'lucide-react';
 import { useStudyStore } from '@/lib/store/useStudyStore';
 import { ExtendedUserProfile, StudyGroup, PrivacyMode } from '@/types/social';
@@ -182,20 +183,31 @@ export default function SocialHubPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100 pb-20 pt-8 px-4 sm:px-6 max-w-6xl mx-auto">
       
-      {/* Top Banner */}
+      {/* Top Banner with Back Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800/80">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30">
-              <Users className="w-5 h-5" />
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Social Study Hub & Tribes
-            </h1>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-all flex items-center gap-1.5 active:scale-95 shadow-sm"
+            title="Back to Home / Focus Console"
+          >
+            <ArrowLeft className="w-4 h-4 text-teal-400" />
+            <span className="text-xs font-semibold text-zinc-300">Home</span>
+          </Link>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                <Users className="w-5 h-5" />
+              </span>
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight text-white">
+                Social Study Hub & Tribes
+              </h1>
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Accountability circles, 1-on-1 buddy timers & live co-working rooms
+            </p>
           </div>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            Accountability circles, 1-on-1 buddy timers & live co-working rooms
-          </p>
         </div>
 
         {/* Tab Controls */}

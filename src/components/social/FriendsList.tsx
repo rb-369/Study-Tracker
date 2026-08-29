@@ -67,7 +67,7 @@ export function FriendsList({ currentUser }: FriendsListProps) {
           target_daily_minutes: 180,
           created_at: new Date().toISOString(),
           is_studying: true,
-          active_subject_topic: 'Organic Chemistry &bull; 18m left',
+          active_subject_topic: 'Organic Chemistry • 18m left',
         },
         {
           id: 'demo_f2',
