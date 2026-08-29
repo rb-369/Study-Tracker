@@ -25,6 +25,7 @@ import { ExtendedUserProfile, StudyGroup, PrivacyMode, BuddySession } from '@/ty
 import { FriendsList } from '@/components/social/FriendsList';
 import { IncomingBuddyInviteBanner } from '@/components/social/IncomingBuddyInviteBanner';
 import { StudyBuddySyncModal } from '@/components/social/StudyBuddySyncModal';
+import { MobileNav } from '@/components/layout/MobileNav';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
@@ -551,6 +552,7 @@ export default function SocialHubPage() {
           </div>
         </div>
       )}
+      <MobileNav />
     </main>
   );
 }
