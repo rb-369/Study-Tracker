@@ -56,35 +56,11 @@ export function FriendsList({ currentUser }: FriendsListProps) {
 
       if (profilesData) {
         setFriends(profilesData);
+      } else {
+        setFriends([]);
       }
     } else {
-      // Demo mock friends if empty
-      setFriends([
-        {
-          id: 'demo_f1',
-          email: 'sarah@example.com',
-          full_name: 'Sarah Chen',
-          handle: '@sarah_focus',
-          level: 14,
-          xp: 2840,
-          target_daily_minutes: 180,
-          created_at: new Date().toISOString(),
-          is_studying: true,
-          active_subject_topic: 'Organic Chemistry • 18m left',
-        },
-        {
-          id: 'demo_f2',
-          email: 'alex@example.com',
-          full_name: 'Alex Rivera',
-          handle: '@alex_deepwork',
-          level: 9,
-          xp: 1420,
-          target_daily_minutes: 120,
-          created_at: new Date().toISOString(),
-          is_studying: false,
-          active_subject_topic: 'Break - Zen Breathwork',
-        },
-      ]);
+      setFriends([]);
     }
 
     // 2. Fetch Incoming Requests

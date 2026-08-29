@@ -85,6 +85,7 @@ create table if not exists public.study_groups (
   description text,
   invite_code text unique not null,
   is_public boolean default false not null,
+  privacy_type text check (privacy_type in ('public', 'code', 'private')) default 'code' not null,
   chat_mode text check (chat_mode in ('open', 'reactions_only')) default 'open' not null,
   color text default '#10b981' not null,
   icon text default 'Users' not null,
@@ -108,6 +109,9 @@ create table if not exists public.group_messages (
   user_id uuid references public.profiles(id) on delete cascade not null,
   content text not null,
   message_type text check (message_type in ('text', 'reaction', 'system')) default 'text' not null,
+  tag text check (tag in ('general', 'doubt', 'solution', 'notes')) default 'general' not null,
+  attachment_title text,
+  attachment_url text,
   is_flagged boolean default false not null,
   report_count integer default 0 not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -225,16 +229,11 @@ create policy "Participants can view and update buddy sessions"
 alter table public.study_groups enable row level security;
 
 drop policy if exists "Anyone can view public groups or groups they are member of" on public.study_groups;
-create policy "Anyone can view public groups or groups they are member of"
+drop policy if exists "Anyone authenticated can view groups by invite code, public, or membership" on public.study_groups;
+create policy "Anyone authenticated can view groups by invite code, public, or membership"
   on public.study_groups for select
   using (
-    is_public = true 
-    or auth.uid() = creator_id 
-    or exists (
-      select 1 from public.group_members 
-      where group_members.group_id = study_groups.id 
-      and group_members.user_id = auth.uid()
-    )
+    auth.uid() is not null
   );
 
 drop policy if exists "Users can create study groups" on public.study_groups;
@@ -251,19 +250,10 @@ create policy "Group creators can update their groups"
 alter table public.group_members enable row level security;
 
 drop policy if exists "Group members can view fellow members" on public.group_members;
-create policy "Group members can view fellow members"
+drop policy if exists "Users can view members of accessible groups" on public.group_members;
+create policy "Users can view members of accessible groups"
   on public.group_members for select
-  using (
-    exists (
-      select 1 from public.group_members gm 
-      where gm.group_id = group_members.group_id 
-      and gm.user_id = auth.uid()
-    )
-    or exists (
-      select 1 from public.study_groups sg
-      where sg.id = group_members.group_id and sg.is_public = true
-    )
-  );
+  using (auth.uid() is not null);
 
 drop policy if exists "Users can join groups" on public.group_members;
 create policy "Users can join groups"

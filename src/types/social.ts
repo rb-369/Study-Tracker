@@ -99,6 +99,9 @@ export interface BuddyLivePresence {
   last_updated: string;
 }
 
+export type GroupPrivacyType = 'public' | 'code' | 'private';
+export type MessageTag = 'general' | 'doubt' | 'solution' | 'notes';
+
 export interface StudyGroup {
   id: string;
   creator_id: string;
@@ -106,6 +109,7 @@ export interface StudyGroup {
   description?: string;
   invite_code: string;
   is_public: boolean;
+  privacy_type?: GroupPrivacyType;
   chat_mode: ChatMode;
   color: string;
   icon: string;
@@ -130,6 +134,9 @@ export interface GroupMessage {
   user_id: string;
   content: string;
   message_type: MessageType;
+  tag?: MessageTag;
+  attachment_title?: string | null;
+  attachment_url?: string | null;
   is_flagged: boolean;
   report_count: number;
   created_at: string;
