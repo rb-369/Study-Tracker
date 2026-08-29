@@ -54,13 +54,13 @@ export function MobileNav({ onOpenNewSession }: MobileNavProps) {
 
   const primaryNavItems = [
     { label: 'Focus', href: '/', icon: Flame },
+    { label: 'Analytics', href: '/analytics', icon: BarChart3 },
     { label: 'Social', href: '/social', icon: Users },
-    { label: 'Mentor', href: '/mentor', icon: Brain },
   ];
 
   const moreMenuItems = [
+    { label: 'AI Mentor', href: '/mentor', icon: Brain },
     { label: 'Exam Goals', href: '/goals', icon: Target },
-    { label: 'Analytics', href: '/analytics', icon: BarChart3 },
     { label: 'Subjects', href: '/subjects', icon: BookOpen },
     { label: 'Settings', href: '/settings', icon: Settings },
   ];
