@@ -188,11 +188,10 @@ export default function SocialHubPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-all flex items-center gap-1.5 active:scale-95 shadow-sm"
-            title="Back to Home / Focus Console"
+            className="p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-all flex items-center justify-center active:scale-95 shadow-sm"
+            title="Back to Focus Console"
           >
-            <ArrowLeft className="w-4 h-4 text-teal-400" />
-            <span className="text-xs font-semibold text-zinc-300">Home</span>
+            <ArrowLeft className="w-5 h-5 text-teal-400" />
           </Link>
 
           <div>
