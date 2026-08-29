@@ -16,7 +16,8 @@ export type XPSource =
   | 'focus_ratio_bonus'
   | 'break_game_completion'
   | 'daily_streak'
-  | 'group_challenge';
+  | 'group_challenge'
+  | 'study_buddy_synergy';
 
 export interface UserXPLog {
   id: string;

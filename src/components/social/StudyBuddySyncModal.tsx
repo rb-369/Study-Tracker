@@ -6,7 +6,6 @@ import {
   Play, 
   Pause, 
   X, 
-  CheckCircle, 
   Clock, 
   BookOpen, 
   Zap,
@@ -27,14 +26,20 @@ import {
   MessageSquare,
   Lock,
   Smile,
-  ShieldCheck
+  ShieldCheck,
+  ChevronDown,
+  Gamepad2,
+  Trophy,
+  CheckCircle2
 } from 'lucide-react';
 import { ExtendedUserProfile, BuddySession, BuddyMessage, BuddyLivePresence } from '@/types/social';
-import { ThoughtCategory } from '@/types';
-import { formatSecondsToTimer } from '@/lib/utils';
+import { ThoughtCategory, StudySession, Subject } from '@/types';
+import { formatSecondsToTimer, generateUUID } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { playPomodoroCompleteChime, playBreakCompleteChime } from '@/lib/sound';
 import { useStudyStore } from '@/lib/store/useStudyStore';
+import { SpeedMathDuel } from '@/components/games/SpeedMathDuel';
+import { awardUserXP } from '@/lib/gamification/xpEngine';
 
 const CATEGORY_META: Record<ThoughtCategory, { label: string; icon: React.ReactNode; color: string }> = {
   phone_social: { label: 'Phone / Social', icon: <Smartphone className="w-3.5 h-3.5" />, color: 'text-rose-400 bg-rose-500/20 border-rose-500/30' },
@@ -82,27 +87,26 @@ export function StudyBuddySyncModal({
   const { 
     addThought, 
     customQuickPings,
-    activeSession,
-    activeTimer,
     subjects,
-    pauseSession,
-    resumeSession,
-    startBreak,
-    endBreak
   } = useStudyStore();
   const supabase = createClient();
 
   const [session, setSession] = useState<BuddySession | null>(existingSession || null);
   const [resolvedFriend, setResolvedFriend] = useState<ExtendedUserProfile | null>(propTargetFriend || null);
   
-  // Independent Personal Timer State
-  const [mySubjectName, setMySubjectName] = useState<string>(activeSession?.subject?.name || propSubjectName);
-  const [myTopic, setMyTopic] = useState<string>(activeSession?.topic || propTopic);
+  // Independent Personal Timer & Subject Selection State
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id || 'sub_general');
+  const [mySubjectName, setMySubjectName] = useState<string>(subjects[0]?.name || propSubjectName);
+  const [myTopic, setMyTopic] = useState<string>(propTopic);
+  const [isEditingSubject, setIsEditingSubject] = useState<boolean>(false);
+
   const [myTargetMinutes, setMyTargetMinutes] = useState<number>(propTargetMinutes);
   const [myElapsedSeconds, setMyElapsedSeconds] = useState<number>(0);
   const [myIsPaused, setMyIsPaused] = useState<boolean>(false);
   const [myIsOnBreak, setMyIsOnBreak] = useState<boolean>(false);
   const [myPingsCount, setMyPingsCount] = useState<number>(0);
+  const [sprintsCompletedToday, setSprintsCompletedToday] = useState<number>(1);
+  const [synergyXPAwarded, setSynergyXPAwarded] = useState<number>(0);
 
   // Buddy's Live Independent Presence (Received via Realtime)
   const [buddyPresence, setBuddyPresence] = useState<BuddyLivePresence>({
@@ -119,13 +123,15 @@ export function StudyBuddySyncModal({
     last_updated: new Date().toISOString(),
   });
 
-  // Break Lounge Motivation Chat State
+  // Break Lounge State & 2-Player Game Mode
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [chatInput, setChatInput] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'study' | 'break_chat'>('study');
+  const [breakSubTab, setBreakSubTab] = useState<'chat' | 'math_duel'>('chat');
+  const [shieldAlert, setShieldAlert] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // UI Drawer states
+  // UI Drawer states & Refs
   const [localMinimized, setLocalMinimized] = useState<boolean>(false);
   const isMinimized = propIsMinimized ?? localMinimized;
   const setMinimized = (min: boolean) => {
@@ -137,12 +143,22 @@ export function StudyBuddySyncModal({
   const [selectedCategory, setSelectedCategory] = useState<ThoughtCategory>('phone_social');
   const [pingMinutes, setPingMinutes] = useState<number>(2);
   const [customPingTitle, setCustomPingTitle] = useState<string>('');
+  const pingDrawerRef = useRef<HTMLDivElement | null>(null);
 
   const myTargetSeconds = myTargetMinutes * 60;
   const myRemainingSeconds = Math.max(0, myTargetSeconds - myElapsedSeconds);
   const hasCompletedRef = useRef<boolean>(false);
 
-  // 1. Resolve Friend Profile
+  // Auto-scroll when Mind Ping drawer opens on mobile
+  useEffect(() => {
+    if (isPingDrawerOpen && pingDrawerRef.current) {
+      setTimeout(() => {
+        pingDrawerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [isPingDrawerOpen]);
+
+  // 1. Resolve Friend Profile & Sync Defaults
   useEffect(() => {
     if (!isOpen) return;
 
@@ -176,9 +192,70 @@ export function StudyBuddySyncModal({
     }
   }, [isOpen, existingSession, propTargetFriend, currentUser, supabase]);
 
+  // Record completed / finished sprint to Analytics & Supabase
+  const logSprintToAnalyticsAndDB = async (studiedSeconds: number) => {
+    if (studiedSeconds < 30) return; // Ignore accidental micro-clicks
+    const studiedMinutes = Math.max(1, Math.round(studiedSeconds / 60));
+    const sessionId = generateUUID();
+    const now = new Date().toISOString();
+
+    const selectedSubjectObj = subjects.find((s) => s.id === selectedSubjectId) || {
+      id: selectedSubjectId || 'sub_general',
+      name: mySubjectName,
+      color: '#14b8a6',
+      icon: '📚',
+      target_weekly_hours: 10,
+      total_seconds: studiedSeconds,
+      created_at: now,
+    };
+
+    const newSession: StudySession = {
+      id: sessionId,
+      user_id: currentUser.id,
+      subject_id: selectedSubjectObj.id,
+      subject: selectedSubjectObj as Subject,
+      topic: myTopic || 'Deep Work Sprint',
+      session_type: 'study_buddy',
+      gross_duration_seconds: studiedSeconds,
+      net_focus_seconds: studiedSeconds,
+      status: 'completed',
+      focus_score: 92,
+      start_time: new Date(Date.now() - studiedSeconds * 1000).toISOString(),
+      end_time: now,
+      created_at: now,
+      thoughts: [],
+    };
+
+    // 1. Award Synergy XP
+    const synergyXP = 50 * sprintsCompletedToday;
+    setSynergyXPAwarded((prev) => prev + synergyXP);
+    await awardUserXP(currentUser.id, synergyXP, 'study_buddy_synergy', sessionId);
+
+    // 2. Insert into Supabase study_sessions
+    if (currentUser.id && !currentUser.id.startsWith('demo-') && !currentUser.id.startsWith('guest-')) {
+      try {
+        await supabase.from('study_sessions').insert({
+          id: sessionId,
+          user_id: currentUser.id,
+          subject_id: selectedSubjectObj.id,
+          topic: myTopic || 'Deep Work Sprint',
+          session_type: 'study_buddy',
+          gross_duration_seconds: studiedSeconds,
+          net_focus_seconds: studiedSeconds,
+          status: 'completed',
+          focus_score: 92,
+          start_time: newSession.start_time,
+          end_time: newSession.end_time,
+        });
+      } catch (err) {
+        console.error('Failed to log buddy session to database:', err);
+      }
+    }
+  };
+
   // 2. Personal Timer Countdown Loop
   useEffect(() => {
-    if (!isOpen || myIsPaused) return;
+    if (!isOpen || myIsPaused || myIsOnBreak) return;
 
     const timer = setInterval(() => {
       setMyElapsedSeconds((prev) => {
@@ -188,15 +265,17 @@ export function StudyBuddySyncModal({
           playPomodoroCompleteChime();
           setMyIsOnBreak(true);
           setActiveTab('break_chat'); // Automatically open break lounge when sprint completes
+          logSprintToAnalyticsAndDB(myTargetSeconds);
+          setSprintsCompletedToday((s) => s + 1);
         }
         return next;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen, myIsPaused, myTargetSeconds]);
+  }, [isOpen, myIsPaused, myIsOnBreak, myTargetSeconds, myTargetMinutes]);
 
-  // 3. Broadcast My Live Presence & Listen for Buddy's Independent Presence & Break Chat
+  // 3. Realtime Presence & Break Messages
   useEffect(() => {
     if (!isOpen || !session) return;
 
@@ -205,7 +284,6 @@ export function StudyBuddySyncModal({
       config: { broadcast: { self: false } },
     });
 
-    // Listen for buddy's presence broadcast
     channel
       .on('broadcast', { event: 'presence_sync' }, (payload) => {
         if (payload.payload) {
@@ -222,7 +300,6 @@ export function StudyBuddySyncModal({
       })
       .subscribe();
 
-    // Broadcast My Presence every 2 seconds
     const presenceInterval = setInterval(() => {
       const myPresence: BuddyLivePresence = {
         user_id: currentUser.id,
@@ -297,7 +374,6 @@ export function StudyBuddySyncModal({
 
     setMessages((prev) => [...prev, newMsg]);
 
-    // Broadcast in real-time
     const channelId = `buddy_session_room_${session.id}`;
     supabase.channel(channelId).send({
       type: 'broadcast',
@@ -305,7 +381,6 @@ export function StudyBuddySyncModal({
       payload: newMsg,
     });
 
-    // Save to database
     try {
       await supabase.from('buddy_messages').insert({
         session_id: session.id,
@@ -321,8 +396,6 @@ export function StudyBuddySyncModal({
     setMyPingsCount((prev) => prev + 1);
     setIsPingDrawerOpen(false);
     setCustomPingTitle('');
-
-    // Saves directly to user's private focus journal
     addThought(title, category, durationMins);
   };
 
@@ -331,16 +404,19 @@ export function StudyBuddySyncModal({
     setMyIsPaused(!myIsPaused);
   };
 
-  // Start / End Break
-  const handleToggleBreak = () => {
-    const nextBreak = !myIsOnBreak;
-    setMyIsOnBreak(nextBreak);
-    if (nextBreak) {
+  // Take Break / Finish Sprint Early
+  const handleTakeBreakEarly = () => {
+    if (!myIsOnBreak) {
+      logSprintToAnalyticsAndDB(myElapsedSeconds);
+      setMyIsOnBreak(true);
       setActiveTab('break_chat');
+    } else {
+      setMyIsOnBreak(false);
+      setActiveTab('study');
     }
   };
 
-  // Start Next Sprint
+  // Start Next Sprint Round
   const handleStartNextSprint = () => {
     setMyElapsedSeconds(0);
     setMyIsPaused(false);
@@ -349,8 +425,11 @@ export function StudyBuddySyncModal({
     setActiveTab('study');
   };
 
-  // Complete and Close
+  // Complete and Close Session
   const handleFinishSession = async () => {
+    if (!hasCompletedRef.current && myElapsedSeconds >= 30) {
+      await logSprintToAnalyticsAndDB(myElapsedSeconds);
+    }
     if (session) {
       try {
         await supabase
@@ -370,6 +449,16 @@ export function StudyBuddySyncModal({
   const currentUserInitial = currentUser?.full_name?.charAt(0) || 'U';
 
   const isBreakUnlocked = myIsOnBreak || buddyPresence.is_on_break || myRemainingSeconds === 0;
+
+  // Handle Tab Switch with Strict Focus Shield
+  const handleTabClick = (tab: 'study' | 'break_chat') => {
+    if (tab === 'break_chat' && !isBreakUnlocked) {
+      setShieldAlert('🛡️ Focus Shield Active: Break Lounge & Chat unlock when you complete your sprint or tap "Take Break".');
+      setTimeout(() => setShieldAlert(null), 4000);
+      return;
+    }
+    setActiveTab(tab);
+  };
 
   // -------------------------------------------------------------
   // Minimized Floating HUD Widget
@@ -407,12 +496,20 @@ export function StudyBuddySyncModal({
   }
 
   // -------------------------------------------------------------
-  // Full Synchronized 1-on-1 Modal with Independent Timers & Break Chat
+  // Full Synchronized 1-on-1 Modal with Independent Subjects, Timers & Games
   // -------------------------------------------------------------
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/85 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden p-6 text-center flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden p-6 text-center flex flex-col max-h-[92vh]">
         
+        {/* Shield Toast Alert */}
+        {shieldAlert && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 w-[90%] p-3 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center justify-center gap-2 animate-slide-up shadow-2xl backdrop-blur-md">
+            <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span>{shieldAlert}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between pb-3.5 border-b border-zinc-800">
           <div className="flex items-center gap-2.5 text-left">
@@ -420,14 +517,15 @@ export function StudyBuddySyncModal({
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span>1-on-1 Study-Buddy Sprint</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/20 text-teal-400 border border-teal-500/30 font-mono font-bold">
-                  ACCOUNTABILITY
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">1-on-1 Study-Buddy Sprint</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono font-bold flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-amber-400" />
+                  <span>{sprintsCompletedToday} Sprints Today</span>
                 </span>
-              </h3>
+              </div>
               <p className="text-xs text-zinc-400">
-                Co-working with <span className="text-zinc-200 font-semibold">{friendName}</span>
+                Co-working with <span className="text-zinc-200 font-semibold">{friendName}</span> &bull; <span className="text-teal-400 font-mono">+{50 * sprintsCompletedToday} Synergy XP</span>
               </p>
             </div>
           </div>
@@ -441,9 +539,9 @@ export function StudyBuddySyncModal({
               <Minus className="w-4 h-4" />
             </button>
             <button
-              onClick={onClose}
+              onClick={handleFinishSession}
               className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Close"
+              title="Close & Save"
             >
               <X className="w-4 h-4" />
             </button>
@@ -453,7 +551,7 @@ export function StudyBuddySyncModal({
         {/* Navigation Tabs: Focus Arena vs Break Lounge */}
         <div className="flex items-center justify-center gap-2 my-4 p-1 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 max-w-sm mx-auto">
           <button
-            onClick={() => setActiveTab('study')}
+            onClick={() => handleTabClick('study')}
             className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'study'
                 ? 'bg-zinc-800 text-white shadow-sm'
@@ -465,11 +563,11 @@ export function StudyBuddySyncModal({
           </button>
 
           <button
-            onClick={() => setActiveTab('break_chat')}
+            onClick={() => handleTabClick('break_chat')}
             className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative ${
               activeTab === 'break_chat'
                 ? 'bg-zinc-800 text-white shadow-sm'
-                : (isBreakUnlocked ? 'text-amber-400 hover:text-amber-300 font-bold' : 'text-zinc-500 hover:text-zinc-400')
+                : (isBreakUnlocked ? 'text-amber-400 hover:text-amber-300 font-bold' : 'text-zinc-500 hover:text-zinc-400 opacity-60 cursor-pointer')
             }`}
           >
             {isBreakUnlocked ? <Coffee className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5 text-zinc-500" />}
@@ -481,7 +579,7 @@ export function StudyBuddySyncModal({
         </div>
 
         {/* ========================================================================= */}
-        {/* TAB 1: DUAL SPRINT ARENA (Independent Timers) */}
+        {/* TAB 1: DUAL SPRINT ARENA (Independent Timers & Subjects) */}
         {/* ========================================================================= */}
         {activeTab === 'study' && (
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
@@ -489,7 +587,7 @@ export function StudyBuddySyncModal({
             {/* Dual Independent Desks */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
               
-              {/* DESK 1: YOUR INDEPENDENT TIMER */}
+              {/* DESK 1: YOUR INDEPENDENT DESK */}
               <div className="p-4 rounded-2xl bg-zinc-950/80 border border-teal-500/30 flex flex-col justify-between space-y-3 relative overflow-hidden shadow-lg shadow-teal-500/5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -502,7 +600,38 @@ export function StudyBuddySyncModal({
                         <span>You</span>
                         <span className="px-1.5 py-0.2 rounded text-[9px] bg-teal-500/20 text-teal-300 font-mono">YOUR TEMPO</span>
                       </div>
-                      <span className="text-[11px] text-zinc-400 font-mono block truncate max-w-[130px]">{mySubjectName}</span>
+                      
+                      {/* Subject Change Dropdown */}
+                      <div className="flex items-center gap-1 mt-0.5">
+                        {isEditingSubject ? (
+                          <select
+                            value={selectedSubjectId}
+                            onChange={(e) => {
+                              setSelectedSubjectId(e.target.value);
+                              const found = subjects.find((s) => s.id === e.target.value);
+                              if (found) setMySubjectName(found.name);
+                              setIsEditingSubject(false);
+                            }}
+                            className="bg-zinc-900 border border-teal-500 text-teal-300 text-[10px] rounded px-1.5 py-0.5 focus:outline-none"
+                            autoFocus
+                            onBlur={() => setIsEditingSubject(false)}
+                          >
+                            {subjects.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingSubject(true)}
+                            className="text-[11px] text-zinc-300 hover:text-teal-300 font-mono flex items-center gap-0.5 underline decoration-dotted truncate max-w-[130px]"
+                            title="Click to Change Your Subject"
+                          >
+                            <span>{mySubjectName}</span>
+                            <ChevronDown className="w-3 h-3 text-zinc-500" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -522,9 +651,15 @@ export function StudyBuddySyncModal({
                   }`}>
                     {myIsOnBreak ? '00:00' : formatSecondsToTimer(myRemainingSeconds)}
                   </div>
-                  <div className="text-[11px] text-zinc-400 font-mono mt-1">
-                    {myTargetMinutes}m Sprint &bull; &ldquo;{myTopic}&rdquo;
-                  </div>
+                  
+                  {/* Topic Edit */}
+                  <input
+                    type="text"
+                    value={myTopic}
+                    onChange={(e) => setMyTopic(e.target.value)}
+                    placeholder="Topic..."
+                    className="text-[11px] text-zinc-400 font-mono mt-1 text-center bg-transparent border-b border-transparent hover:border-zinc-700 focus:border-teal-500 focus:outline-none w-4/5 mx-auto block"
+                  />
                   <div className="text-[10px] text-teal-400/90 font-mono mt-0.5">
                     {myPingsCount} Mind Pings logged
                   </div>
@@ -553,13 +688,13 @@ export function StudyBuddySyncModal({
                   </button>
 
                   <button
-                    onClick={handleToggleBreak}
+                    onClick={handleTakeBreakEarly}
                     className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-1 active:scale-95 ${
                       myIsOnBreak
                         ? 'bg-amber-500 text-zinc-950 border-amber-400'
                         : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
                     }`}
-                    title="Take a Break"
+                    title={myIsOnBreak ? 'Resume Focus Sprint' : 'Finish Sprint Early & Rest'}
                   >
                     <Coffee className="w-3 h-3" />
                   </button>
@@ -599,7 +734,7 @@ export function StudyBuddySyncModal({
                   }`}>
                     {buddyPresence.is_on_break ? '00:00' : formatSecondsToTimer(buddyPresence.remaining_seconds)}
                   </div>
-                  <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                  <div className="text-[11px] text-zinc-400 font-mono mt-1 truncate max-w-[200px] mx-auto">
                     {buddyPresence.target_minutes}m Sprint &bull; &ldquo;{buddyPresence.topic}&rdquo;
                   </div>
                   <div className="text-[10px] text-indigo-400/90 font-mono mt-0.5">
@@ -621,9 +756,9 @@ export function StudyBuddySyncModal({
 
             </div>
 
-            {/* Mind Ping Drawer */}
+            {/* Mind Ping Drawer (With Mobile Auto-Scroll Ref) */}
             {isPingDrawerOpen && (
-              <div className="p-4 rounded-2xl bg-zinc-950/90 border border-purple-500/40 text-left animate-slide-up space-y-3.5 shadow-2xl">
+              <div ref={pingDrawerRef} className="p-4 rounded-2xl bg-zinc-950/95 border border-purple-500/40 text-left animate-slide-up space-y-3.5 shadow-2xl">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
                     <Brain className="w-4 h-4 text-purple-400" />
@@ -631,7 +766,7 @@ export function StudyBuddySyncModal({
                   </span>
                   <button
                     onClick={() => setIsPingDrawerOpen(false)}
-                    className="text-zinc-500 hover:text-zinc-300 text-xs"
+                    className="text-zinc-500 hover:text-zinc-300 text-xs font-bold"
                   >
                     Close
                   </button>
@@ -729,21 +864,21 @@ export function StudyBuddySyncModal({
               </div>
             )}
 
-            {/* In-Focus Motivation Preview & Shield Indicator */}
+            {/* In-Focus Motivation & Break Prompt */}
             <div className="p-3.5 rounded-2xl bg-zinc-950/50 border border-zinc-800/80 flex items-center justify-between text-xs text-left">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-teal-400" />
+                <ShieldCheck className="w-4 h-4 text-teal-400 flex-shrink-0" />
                 <span className="text-zinc-300">
                   {isBreakUnlocked 
-                    ? '🎉 Sprint complete! Break Lounge chat is unlocked.' 
-                    : '🛡️ Focus Shield Active • Chatting unlocks when you take a Pomodoro break.'}
+                    ? '🎉 Sprint complete! Break Lounge & Games are unlocked.' 
+                    : '🛡️ Focus Shield Active • Chatting & games unlock when you take a break.'}
                 </span>
               </div>
               <button
-                onClick={() => setActiveTab('break_chat')}
+                onClick={handleTakeBreakEarly}
                 className="text-amber-400 font-bold hover:underline whitespace-nowrap ml-2"
               >
-                {isBreakUnlocked ? 'Open Lounge ☕' : 'View Lounge'}
+                {myIsOnBreak ? 'Resume Sprint' : 'Take Break Early ☕'}
               </button>
             </div>
 
@@ -751,100 +886,134 @@ export function StudyBuddySyncModal({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: BREAK LOUNGE & MOTIVATION CHAT */}
+        {/* TAB 2: BREAK LOUNGE & 2-PLAYER MATH DUEL */}
         {/* ========================================================================= */}
         {activeTab === 'break_chat' && (
           <div className="flex-1 flex flex-col overflow-hidden text-left space-y-3">
             
-            {/* Header banner */}
+            {/* Break Lounge Header & Subtab Switcher */}
             <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <Coffee className="w-4 h-4 text-amber-400" />
-                <span className="font-semibold text-amber-200">
-                  Break Lounge &bull; Celebrate and motivate each other between sprints!
-                </span>
+                <button
+                  onClick={() => setBreakSubTab('chat')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                    breakSubTab === 'chat'
+                      ? 'bg-amber-500 text-zinc-950 shadow-md'
+                      : 'text-amber-200 hover:bg-amber-500/20'
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Motivation Chat</span>
+                </button>
+
+                <button
+                  onClick={() => setBreakSubTab('math_duel')}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                    breakSubTab === 'math_duel'
+                      ? 'bg-amber-500 text-zinc-950 shadow-md'
+                      : 'text-amber-200 hover:bg-amber-500/20'
+                  }`}
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" />
+                  <span>Speed Math Duel ⚡</span>
+                </button>
               </div>
-              {myIsOnBreak && (
-                <button
-                  onClick={handleStartNextSprint}
-                  className="px-3 py-1 rounded-lg bg-emerald-500 text-zinc-950 font-bold text-xs hover:bg-emerald-400 transition-all active:scale-95 shadow-md"
-                >
-                  Start Next Sprint ▶
-                </button>
-              )}
-            </div>
 
-            {/* Quick Motivation Cheers */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {MOTIVATION_CHIPS.map((chip) => (
-                <button
-                  key={chip}
-                  onClick={() => handleSendMessage(chip)}
-                  className="px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-[11px] font-medium whitespace-nowrap transition-all active:scale-95 flex items-center gap-1"
-                >
-                  <span>{chip}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Stream */}
-            <div className="flex-1 overflow-y-auto p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-2.5 min-h-[220px]">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 text-xs py-8">
-                  <Smile className="w-8 h-8 text-zinc-600 mb-2" />
-                  <p className="font-semibold text-zinc-400">No break messages yet</p>
-                  <p className="text-[11px] text-zinc-600">Send an encouraging cheer to celebrate your sprint!</p>
-                </div>
-              ) : (
-                messages.map((m) => {
-                  const isMe = m.sender_id === currentUser.id;
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                    >
-                      <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-mono mb-0.5">
-                        <span>{m.sender_name}</span>
-                        <span>&bull;</span>
-                        <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className={`px-3.5 py-2 rounded-2xl text-xs max-w-[80%] break-words ${
-                        isMe 
-                          ? 'bg-teal-500 text-zinc-950 font-medium rounded-tr-none' 
-                          : 'bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700'
-                      }`}>
-                        {m.content}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-
-            {/* Chat Input Bar */}
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Send encouragement or coordinate your next round..."
-                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-400"
-              />
               <button
-                type="submit"
-                disabled={!chatInput.trim()}
-                className="p-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:hover:bg-amber-500 text-zinc-950 font-bold transition-all active:scale-95"
+                onClick={handleStartNextSprint}
+                className="px-3.5 py-1 rounded-xl bg-emerald-500 text-zinc-950 font-bold text-xs hover:bg-emerald-400 transition-all active:scale-95 shadow-md shadow-emerald-500/20"
               >
-                <Send className="w-4 h-4" />
+                Start Next Sprint ▶
               </button>
-            </form>
+            </div>
+
+            {/* Subtab 1: Motivation Chat */}
+            {breakSubTab === 'chat' && (
+              <div className="flex-1 flex flex-col overflow-hidden space-y-2.5">
+                {/* Quick Motivation Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {MOTIVATION_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      onClick={() => handleSendMessage(chip)}
+                      className="px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-[11px] font-medium whitespace-nowrap transition-all active:scale-95 flex items-center gap-1"
+                    >
+                      <span>{chip}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chat Message Stream */}
+                <div className="flex-1 overflow-y-auto p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-2.5 min-h-[200px]">
+                  {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 text-xs py-6">
+                      <Smile className="w-8 h-8 text-zinc-600 mb-2" />
+                      <p className="font-semibold text-zinc-400">No break messages yet</p>
+                      <p className="text-[11px] text-zinc-600">Send an encouraging cheer to celebrate your sprint!</p>
+                    </div>
+                  ) : (
+                    messages.map((m) => {
+                      const isMe = m.sender_id === currentUser.id;
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                        >
+                          <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-mono mb-0.5">
+                            <span>{m.sender_name}</span>
+                            <span>&bull;</span>
+                            <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <div className={`px-3.5 py-2 rounded-2xl text-xs max-w-[80%] break-words ${
+                            isMe 
+                              ? 'bg-teal-500 text-zinc-950 font-medium rounded-tr-none' 
+                              : 'bg-zinc-800 text-zinc-100 rounded-tl-none border border-zinc-700'
+                          }`}>
+                            {m.content}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+
+                {/* Chat Composer */}
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Send encouragement or coordinate your next round..."
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim()}
+                    className="p-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:hover:bg-amber-500 text-zinc-950 font-bold transition-all active:scale-95"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Subtab 2: Speed Math Duel Game */}
+            {breakSubTab === 'math_duel' && (
+              <div className="flex-1 overflow-y-auto pr-1">
+                <SpeedMathDuel
+                  sessionId={session?.id || 'duel_default'}
+                  currentUser={currentUser}
+                  targetFriend={resolvedFriend || undefined}
+                />
+              </div>
+            )}
 
           </div>
         )}

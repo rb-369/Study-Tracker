@@ -1,4 +1,4 @@
-export type SessionType = 'stopwatch' | 'pomodoro' | 'countdown';
+export type SessionType = 'stopwatch' | 'pomodoro' | 'countdown' | 'study_buddy';
 export type SessionStatus = 'active' | 'completed' | 'abandoned';
 export type BreakType = 'short' | 'long' | 'custom';
 
