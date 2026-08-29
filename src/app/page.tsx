@@ -481,7 +481,7 @@ export default function DashboardPage() {
           isOpen={!!activeBuddySession}
           onClose={() => setActiveBuddySession(null)}
           currentUser={user!}
-          targetFriend={activeBuddySession.buddy?.id === user?.id ? activeBuddySession.initiator! : activeBuddySession.buddy!}
+          targetFriend={activeBuddySession.buddy?.id === user?.id ? activeBuddySession.initiator : activeBuddySession.buddy}
           existingSession={activeBuddySession}
         />
       )}

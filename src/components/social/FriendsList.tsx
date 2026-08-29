@@ -409,7 +409,7 @@ export function FriendsList({ currentUser }: FriendsListProps) {
           isOpen={!!activeBuddySession}
           onClose={() => setActiveBuddySession(null)}
           currentUser={currentUser}
-          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator! : activeBuddySession.buddy!}
+          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator : activeBuddySession.buddy}
           existingSession={activeBuddySession}
         />
       )}

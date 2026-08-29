@@ -58,6 +58,29 @@ export function IncomingBuddyInviteBanner({
       } catch {}
     };
 
+    const enrichAndSetInvite = async (rawSession: BuddySession) => {
+      if (!rawSession) return;
+      if (rawSession.initiator) {
+        setPendingInvite(rawSession);
+        return;
+      }
+
+      try {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', rawSession.initiator_id)
+          .single();
+
+        setPendingInvite({
+          ...rawSession,
+          initiator: prof || undefined,
+        });
+      } catch {
+        setPendingInvite(rawSession);
+      }
+    };
+
     fetchPending();
 
     const channel = supabase
@@ -71,7 +94,7 @@ export function IncomingBuddyInviteBanner({
           filter: `buddy_id=eq.${currentUser.id}`,
         },
         (payload) => {
-          setPendingInvite(payload.new as BuddySession);
+          enrichAndSetInvite(payload.new as BuddySession);
         }
       )
       .on(
@@ -86,6 +109,8 @@ export function IncomingBuddyInviteBanner({
           const updated = payload.new as BuddySession;
           if (updated.status !== 'inviting' && updated.status !== 'pending_break') {
             setPendingInvite(null);
+          } else {
+            enrichAndSetInvite(updated);
           }
         }
       )
@@ -119,6 +144,8 @@ export function IncomingBuddyInviteBanner({
         ...pendingInvite,
         status: 'active',
         start_time: new Date().toISOString(),
+        buddy: currentUser || undefined,
+        initiator: pendingInvite.initiator,
       });
       setPendingInvite(null);
     } catch (err) {

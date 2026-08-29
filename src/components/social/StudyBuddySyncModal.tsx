@@ -22,7 +22,7 @@ interface StudyBuddySyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: ExtendedUserProfile;
-  targetFriend: ExtendedUserProfile;
+  targetFriend?: ExtendedUserProfile;
   subjectName?: string;
   topic?: string;
   targetMinutes?: number;
@@ -33,13 +33,14 @@ export function StudyBuddySyncModal({
   isOpen,
   onClose,
   currentUser,
-  targetFriend,
+  targetFriend: propTargetFriend,
   subjectName = 'General Study',
   topic = 'Deep Work Sprint',
   targetMinutes = 25,
   existingSession,
 }: StudyBuddySyncModalProps) {
   const [session, setSession] = useState<BuddySession | null>(existingSession || null);
+  const [resolvedFriend, setResolvedFriend] = useState<ExtendedUserProfile | null>(propTargetFriend || null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [highFivesCount, setHighFivesCount] = useState<number>(existingSession?.high_fives || 0);
   const [highFiveAnimate, setHighFiveAnimate] = useState<boolean>(false);
@@ -53,14 +54,42 @@ export function StudyBuddySyncModal({
   useEffect(() => {
     if (!isOpen) return;
 
+    // Resolve friend profile if not passed directly
+    if (!propTargetFriend && existingSession) {
+      const otherUserId = existingSession.buddy_id === currentUser.id
+        ? existingSession.initiator_id
+        : existingSession.buddy_id;
+
+      const attachedFriend = existingSession.buddy?.id === currentUser.id
+        ? existingSession.initiator
+        : existingSession.buddy;
+
+      if (attachedFriend) {
+        setResolvedFriend(attachedFriend);
+      } else if (otherUserId) {
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', otherUserId)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              setResolvedFriend(data as ExtendedUserProfile);
+            }
+          });
+      }
+    } else if (propTargetFriend) {
+      setResolvedFriend(propTargetFriend);
+    }
+
     if (existingSession) {
       setSession(existingSession);
       setStatus('active');
-    } else {
+    } else if (propTargetFriend) {
       const initialSession: BuddySession = {
         id: 'buddy_' + Date.now(),
         initiator_id: currentUser.id,
-        buddy_id: targetFriend.id,
+        buddy_id: propTargetFriend.id,
         subject_name: subjectName,
         topic: topic,
         duration_minutes: targetMinutes,
@@ -71,7 +100,7 @@ export function StudyBuddySyncModal({
         high_fives: 0,
         created_at: new Date().toISOString(),
         initiator: currentUser,
-        buddy: targetFriend,
+        buddy: propTargetFriend,
       };
 
       setSession(initialSession);
@@ -84,7 +113,7 @@ export function StudyBuddySyncModal({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen, targetMinutes, subjectName, topic, currentUser, targetFriend, existingSession]);
+  }, [isOpen, targetMinutes, subjectName, topic, currentUser, propTargetFriend, existingSession, supabase]);
 
   const handleSendHighFive = () => {
     setHighFivesCount((prev) => prev + 1);
@@ -92,7 +121,13 @@ export function StudyBuddySyncModal({
     setTimeout(() => setHighFiveAnimate(false), 1200);
   };
 
-  if (!isOpen || !session) return null;
+  if (!isOpen) return null;
+
+  const friendName = resolvedFriend?.full_name || resolvedFriend?.handle || 'Study Buddy';
+  const friendFirstName = friendName.split(' ')[0];
+  const friendInitial = resolvedFriend?.full_name?.charAt(0) || resolvedFriend?.handle?.charAt(1) || 'B';
+  const currentUserName = currentUser?.full_name || 'You';
+  const currentUserInitial = currentUser?.full_name?.charAt(0) || 'U';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/85 backdrop-blur-md animate-fade-in">
@@ -112,7 +147,7 @@ export function StudyBuddySyncModal({
                 </span>
               </h3>
               <p className="text-xs text-zinc-400">
-                Shared accountability with {targetFriend.full_name || targetFriend.handle}
+                Shared accountability with {friendName}
               </p>
             </div>
           </div>
@@ -132,7 +167,7 @@ export function StudyBuddySyncModal({
             <div className="flex flex-col items-center">
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-teal-500/20 border-2 border-teal-400 flex items-center justify-center shadow-lg shadow-teal-500/20">
                 <span className="text-xl sm:text-2xl font-bold text-teal-300">
-                  {currentUser.full_name?.charAt(0) || 'U'}
+                  {currentUserInitial}
                 </span>
                 <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-zinc-900" />
               </div>
@@ -152,12 +187,12 @@ export function StudyBuddySyncModal({
             <div className="flex flex-col items-center">
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-indigo-500/20 border-2 border-indigo-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <span className="text-xl sm:text-2xl font-bold text-indigo-300">
-                  {targetFriend.full_name?.charAt(0) || targetFriend.handle?.charAt(1) || 'F'}
+                  {friendInitial}
                 </span>
                 <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-zinc-900" />
               </div>
               <span className="text-xs font-bold text-zinc-200 mt-2">
-                {targetFriend.full_name?.split(' ')[0] || targetFriend.handle}
+                {friendFirstName}
               </span>
               <span className="text-[11px] text-zinc-500 font-mono">In Focus</span>
             </div>
