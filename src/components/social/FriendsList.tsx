@@ -20,6 +20,8 @@ import { ExtendedUserProfile, Friendship, FriendRequest } from '@/types/social';
 import { createClient } from '@/lib/supabase/client';
 import { checkRateLimit, registerAction, blockUser } from '@/lib/moderation/moderationService';
 import { StudyBuddySyncModal } from './StudyBuddySyncModal';
+import { StudyBuddyInviteModal } from './StudyBuddyInviteModal';
+import { BuddySession } from '@/types/social';
 
 interface FriendsListProps {
   currentUser: ExtendedUserProfile;
@@ -31,7 +33,8 @@ export function FriendsList({ currentUser }: FriendsListProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [addStatus, setAddStatus] = useState<{ text: string; success: boolean } | null>(null);
-  const [activeBuddyFriend, setActiveBuddyFriend] = useState<ExtendedUserProfile | null>(null);
+  const [invitingFriend, setInvitingFriend] = useState<ExtendedUserProfile | null>(null);
+  const [activeBuddySession, setActiveBuddySession] = useState<BuddySession | null>(null);
   const [highFiveToast, setHighFiveToast] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -298,7 +301,7 @@ export function FriendsList({ currentUser }: FriendsListProps) {
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-1">
                 <button
-                  onClick={() => setActiveBuddyFriend(friend)}
+                  onClick={() => setInvitingFriend(friend)}
                   className="flex-1 py-2 px-3 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/30 text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95"
                 >
                   <Zap className="w-3.5 h-3.5 text-teal-400" />
@@ -386,16 +389,28 @@ export function FriendsList({ currentUser }: FriendsListProps) {
         </div>
       )}
 
-      {/* Active 1-on-1 Study Buddy Pairing Modal */}
-      {activeBuddyFriend && (
-        <StudyBuddySyncModal
-          isOpen={!!activeBuddyFriend}
-          onClose={() => setActiveBuddyFriend(null)}
+      {/* 1-on-1 Focus Invite Configuration Modal */}
+      {invitingFriend && (
+        <StudyBuddyInviteModal
+          isOpen={!!invitingFriend}
+          onClose={() => setInvitingFriend(null)}
           currentUser={currentUser}
-          targetFriend={activeBuddyFriend}
-          subjectName="General Study"
-          topic="Focus Sprint Together"
-          targetMinutes={25}
+          targetFriend={invitingFriend}
+          onStartSynchronizedSession={(session) => {
+            setInvitingFriend(null);
+            setActiveBuddySession(session);
+          }}
+        />
+      )}
+
+      {/* Active Synchronized 1-on-1 Study Buddy Pairing Modal */}
+      {activeBuddySession && (
+        <StudyBuddySyncModal
+          isOpen={!!activeBuddySession}
+          onClose={() => setActiveBuddySession(null)}
+          currentUser={currentUser}
+          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator! : activeBuddySession.buddy!}
+          existingSession={activeBuddySession}
         />
       )}
     </div>

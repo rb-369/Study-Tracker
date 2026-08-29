@@ -2,7 +2,7 @@ import { UserProfile } from './index';
 
 export type PrivacyMode = 'friends_only' | 'public' | 'ghost';
 export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected';
-export type BuddySessionStatus = 'inviting' | 'active' | 'completed' | 'declined' | 'cancelled';
+export type BuddySessionStatus = 'inviting' | 'pending_break' | 'active' | 'completed' | 'declined' | 'cancelled';
 export type GroupRole = 'owner' | 'admin' | 'member';
 export type ChatMode = 'open' | 'reactions_only';
 export type MessageType = 'text' | 'reaction' | 'system';

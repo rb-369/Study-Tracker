@@ -28,6 +28,9 @@ import { SubjectManager } from "@/components/subjects/SubjectManager";
 import { computeAnalyticsSummary } from "@/lib/analytics/metrics";
 import { formatMinutesToDisplay, CATEGORY_METADATA } from "@/lib/utils";
 import { StudySession } from "@/types";
+import { IncomingBuddyInviteBanner } from "@/components/social/IncomingBuddyInviteBanner";
+import { StudyBuddySyncModal } from "@/components/social/StudyBuddySyncModal";
+import { BuddySession } from "@/types/social";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -36,6 +39,7 @@ export default function DashboardPage() {
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
   const [isNewSubjectModalOpen, setIsNewSubjectModalOpen] = useState(false);
+  const [activeBuddySession, setActiveBuddySession] = useState<BuddySession | null>(null);
 
   // Auth gate check
   React.useEffect(() => {
@@ -461,6 +465,25 @@ export default function DashboardPage() {
       {/* Add Subject Modal */}
       {isNewSubjectModalOpen && (
         <SubjectManager onClose={() => setIsNewSubjectModalOpen(false)} />
+      )}
+
+      {/* Incoming Buddy Invite (Distraction-Shield: Only visible when idle or in a Pomodoro break) */}
+      <IncomingBuddyInviteBanner
+        currentUser={user}
+        onAcceptInvite={(session) => {
+          setActiveBuddySession(session);
+        }}
+      />
+
+      {/* Synchronized 1-on-1 Buddy Session Modal */}
+      {activeBuddySession && (
+        <StudyBuddySyncModal
+          isOpen={!!activeBuddySession}
+          onClose={() => setActiveBuddySession(null)}
+          currentUser={user!}
+          targetFriend={activeBuddySession.buddy?.id === user?.id ? activeBuddySession.initiator! : activeBuddySession.buddy!}
+          existingSession={activeBuddySession}
+        />
       )}
 
       {/* Mobile Bottom Navigation */}

@@ -23,9 +23,10 @@ interface StudyBuddySyncModalProps {
   onClose: () => void;
   currentUser: ExtendedUserProfile;
   targetFriend: ExtendedUserProfile;
-  subjectName: string;
-  topic: string;
-  targetMinutes: number;
+  subjectName?: string;
+  topic?: string;
+  targetMinutes?: number;
+  existingSession?: BuddySession | null;
 }
 
 export function StudyBuddySyncModal({
@@ -33,43 +34,49 @@ export function StudyBuddySyncModal({
   onClose,
   currentUser,
   targetFriend,
-  subjectName,
-  topic,
-  targetMinutes,
+  subjectName = 'General Study',
+  topic = 'Deep Work Sprint',
+  targetMinutes = 25,
+  existingSession,
 }: StudyBuddySyncModalProps) {
-  const [session, setSession] = useState<BuddySession | null>(null);
+  const [session, setSession] = useState<BuddySession | null>(existingSession || null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-  const [highFivesCount, setHighFivesCount] = useState<number>(0);
+  const [highFivesCount, setHighFivesCount] = useState<number>(existingSession?.high_fives || 0);
   const [highFiveAnimate, setHighFiveAnimate] = useState<boolean>(false);
-  const [status, setStatus] = useState<'inviting' | 'active' | 'completed'>('inviting');
+  const [status, setStatus] = useState<'inviting' | 'active' | 'completed'>('active');
 
   const supabase = createClient();
-  const targetSeconds = targetMinutes * 60;
+  const duration = existingSession?.duration_minutes || targetMinutes;
+  const targetSeconds = duration * 60;
   const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    // Simulate/Initiate Buddy Pairing
-    const initialSession: BuddySession = {
-      id: 'buddy_' + Date.now(),
-      initiator_id: currentUser.id,
-      buddy_id: targetFriend.id,
-      subject_name: subjectName,
-      topic: topic,
-      duration_minutes: targetMinutes,
-      status: 'active',
-      start_time: new Date().toISOString(),
-      initiator_pings: 0,
-      buddy_pings: 0,
-      high_fives: 0,
-      created_at: new Date().toISOString(),
-      initiator: currentUser,
-      buddy: targetFriend,
-    };
+    if (existingSession) {
+      setSession(existingSession);
+      setStatus('active');
+    } else {
+      const initialSession: BuddySession = {
+        id: 'buddy_' + Date.now(),
+        initiator_id: currentUser.id,
+        buddy_id: targetFriend.id,
+        subject_name: subjectName,
+        topic: topic,
+        duration_minutes: targetMinutes,
+        status: 'active',
+        start_time: new Date().toISOString(),
+        initiator_pings: 0,
+        buddy_pings: 0,
+        high_fives: 0,
+        created_at: new Date().toISOString(),
+        initiator: currentUser,
+        buddy: targetFriend,
+      };
 
-    setSession(initialSession);
-    setStatus('active');
+      setSession(initialSession);
+      setStatus('active');
+    }
 
     // Timer Interval
     const timer = setInterval(() => {
@@ -77,7 +84,7 @@ export function StudyBuddySyncModal({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen, targetMinutes, subjectName, topic, currentUser, targetFriend]);
+  }, [isOpen, targetMinutes, subjectName, topic, currentUser, targetFriend, existingSession]);
 
   const handleSendHighFive = () => {
     setHighFivesCount((prev) => prev + 1);

@@ -21,8 +21,10 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { useStudyStore } from '@/lib/store/useStudyStore';
-import { ExtendedUserProfile, StudyGroup, PrivacyMode } from '@/types/social';
+import { ExtendedUserProfile, StudyGroup, PrivacyMode, BuddySession } from '@/types/social';
 import { FriendsList } from '@/components/social/FriendsList';
+import { IncomingBuddyInviteBanner } from '@/components/social/IncomingBuddyInviteBanner';
+import { StudyBuddySyncModal } from '@/components/social/StudyBuddySyncModal';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
@@ -34,6 +36,7 @@ export default function SocialHubPage() {
   const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isJoinCodeOpen, setIsJoinCodeOpen] = useState(false);
+  const [activeBuddySession, setActiveBuddySession] = useState<BuddySession | null>(null);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [joinStatus, setJoinStatus] = useState<string | null>(null);
 
@@ -547,6 +550,24 @@ export default function SocialHubPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Incoming Buddy Invite */}
+      <IncomingBuddyInviteBanner
+        currentUser={currentUser}
+        onAcceptInvite={(session) => {
+          setActiveBuddySession(session);
+        }}
+      />
+
+      {/* Synchronized 1-on-1 Buddy Session Modal */}
+      {activeBuddySession && (
+        <StudyBuddySyncModal
+          isOpen={!!activeBuddySession}
+          onClose={() => setActiveBuddySession(null)}
+          currentUser={currentUser}
+          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator! : activeBuddySession.buddy!}
+          existingSession={activeBuddySession}
+        />
       )}
     </main>
   );
