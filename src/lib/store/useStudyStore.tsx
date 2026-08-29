@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType, ExamGoal, ActiveTimerState, BreakType, BreakState, CustomQuickPing } from "@/types";
+import { BuddySession } from "@/types/social";
 import { INITIAL_SUBJECTS, INITIAL_SESSIONS, INITIAL_GOALS } from "./seedData";
 import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
@@ -18,6 +19,10 @@ interface StudyContextType {
   goals: ExamGoal[];
   sessions: StudySession[];
   activeSession: StudySession | null;
+  activeBuddySession: BuddySession | null;
+  setActiveBuddySession: (session: BuddySession | null) => void;
+  isBuddySyncMinimized: boolean;
+  setIsBuddySyncMinimized: (minimized: boolean) => void;
   activeTimer: ActiveTimerState;
   netFocusSeconds: number;
   currentFocusRatio: number;
@@ -71,6 +76,8 @@ const LOCAL_STORAGE_KEY_SESSIONS = "studyflow_sessions";
 const LOCAL_STORAGE_KEY_ACTIVE = "studyflow_active_session";
 const LOCAL_STORAGE_KEY_TIMER = "studyflow_active_timer";
 const LOCAL_STORAGE_KEY_QUICK_PINGS = "studyflow_custom_quick_pings";
+const LOCAL_STORAGE_KEY_BUDDY_SESSION = "studyflow_active_buddy_session";
+const LOCAL_STORAGE_KEY_BUDDY_MINIMIZED = "studyflow_buddy_sync_minimized";
 
 const DEFAULT_QUICK_PINGS: CustomQuickPing[] = [
   { id: "micro_30s", title: "30s Micro Ping", category: "phone_social", minutes: 0.5, icon: "⚡", isCustom: false },
@@ -89,7 +96,27 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   const [goals, setGoals] = useState<ExamGoal[]>([]);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [activeSession, setActiveSession] = useState<StudySession | null>(null);
+  const [activeBuddySession, setActiveBuddySessionState] = useState<BuddySession | null>(null);
+  const [isBuddySyncMinimized, setIsBuddySyncMinimizedState] = useState<boolean>(false);
   const [customQuickPings, setCustomQuickPings] = useState<CustomQuickPing[]>(DEFAULT_QUICK_PINGS);
+
+  const setActiveBuddySession = (session: BuddySession | null) => {
+    setActiveBuddySessionState(session);
+    if (typeof window !== "undefined") {
+      if (session) {
+        localStorage.setItem(LOCAL_STORAGE_KEY_BUDDY_SESSION, JSON.stringify(session));
+      } else {
+        localStorage.removeItem(LOCAL_STORAGE_KEY_BUDDY_SESSION);
+      }
+    }
+  };
+
+  const setIsBuddySyncMinimized = (minimized: boolean) => {
+    setIsBuddySyncMinimizedState(minimized);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LOCAL_STORAGE_KEY_BUDDY_MINIMIZED, String(minimized));
+    }
+  };
 
   const [activeTimer, setActiveTimer] = useState<ActiveTimerState>({
     type: "stopwatch",
@@ -160,17 +187,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
           }
 
           setActiveTimer({
-            type: parsedTimer.type || active.session_type || "stopwatch",
-            targetMinutes: parsedTimer.targetMinutes || 25,
+            ...parsedTimer,
             elapsedSeconds: calculatedElapsed,
-            isRunning,
-            isInitialReady: parsedTimer.isInitialReady ?? false,
-            startTime: parsedTimer.startTime || new Date(active.start_time).getTime(),
-            lastStartedAt: isRunning ? (lastStartedAt || Date.now()) : null,
-            accumulatedSeconds: accumulated,
-            pomodoroCyclesCompleted: parsedTimer.pomodoroCyclesCompleted || 0,
-            totalStudySeconds: parsedTimer.totalStudySeconds || 0,
-            totalBreakSeconds: parsedTimer.totalBreakSeconds || 0,
             breakState: restoredBreakState,
           });
         } else {
@@ -188,6 +206,22 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
             totalBreakSeconds: 0,
           });
         }
+      }
+
+      // Restore Active Buddy Session from local storage
+      const savedBuddy = localStorage.getItem(LOCAL_STORAGE_KEY_BUDDY_SESSION);
+      if (savedBuddy) {
+        try {
+          const parsedBuddy: BuddySession = JSON.parse(savedBuddy);
+          if (parsedBuddy && parsedBuddy.status === 'active') {
+            setActiveBuddySessionState(parsedBuddy);
+          }
+        } catch {}
+      }
+
+      const savedMinimized = localStorage.getItem(LOCAL_STORAGE_KEY_BUDDY_MINIMIZED);
+      if (savedMinimized === "true") {
+        setIsBuddySyncMinimizedState(true);
       }
     } catch (e) {
       console.error("Error restoring active session from storage:", e);
@@ -500,6 +534,28 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         } else {
           setSessions([]);
         }
+      }
+
+      // 4. Restore Active Buddy Session from Supabase if present
+      try {
+        const { data: activeBuddy } = await supabase
+          .from('buddy_sessions')
+          .select('*')
+          .or(`initiator_id.eq.${userId},buddy_id.eq.${userId}`)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (activeBuddy) {
+          const startMs = activeBuddy.start_time ? new Date(activeBuddy.start_time).getTime() : 0;
+          const durationMs = (activeBuddy.duration_minutes || 25) * 60 * 1000;
+          if (!startMs || Date.now() - startMs < durationMs + 7200000) {
+            setActiveBuddySessionState(activeBuddy as BuddySession);
+          }
+        }
+      } catch (bErr) {
+        console.warn("Active buddy fetch fallback:", bErr);
       }
     } catch (e) {
       console.error("Error loading Supabase data:", e);
@@ -1866,6 +1922,10 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         goals,
         sessions,
         activeSession,
+        activeBuddySession,
+        setActiveBuddySession,
+        isBuddySyncMinimized,
+        setIsBuddySyncMinimized,
         activeTimer,
         netFocusSeconds,
         currentFocusRatio,

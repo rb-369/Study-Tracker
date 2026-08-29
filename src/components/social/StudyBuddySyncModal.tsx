@@ -18,7 +18,13 @@ import {
   Maximize2,
   AlertCircle,
   Plus,
-  Send
+  Send,
+  Smartphone,
+  Coffee,
+  Lightbulb,
+  CloudSun,
+  Home,
+  HelpCircle
 } from 'lucide-react';
 import { ExtendedUserProfile, BuddySession } from '@/types/social';
 import { ThoughtCategory } from '@/types';
@@ -26,6 +32,15 @@ import { formatSecondsToTimer } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { playPomodoroCompleteChime, playBreakCompleteChime } from '@/lib/sound';
 import { useStudyStore } from '@/lib/store/useStudyStore';
+
+const CATEGORY_META: Record<ThoughtCategory, { label: string; icon: React.ReactNode; color: string }> = {
+  phone_social: { label: 'Phone / Social', icon: <Smartphone className="w-3.5 h-3.5" />, color: 'text-rose-400 bg-rose-500/20 border-rose-500/30' },
+  hunger_snack: { label: 'Snack / Water', icon: <Coffee className="w-3.5 h-3.5" />, color: 'text-amber-400 bg-amber-500/20 border-amber-500/30' },
+  random_idea: { label: 'Random Idea', icon: <Lightbulb className="w-3.5 h-3.5" />, color: 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30' },
+  anxiety_stress: { label: 'Overthinking', icon: <CloudSun className="w-3.5 h-3.5" />, color: 'text-purple-400 bg-purple-500/20 border-purple-500/30' },
+  urgent_chore: { label: 'Urgent Chore', icon: <Home className="w-3.5 h-3.5" />, color: 'text-blue-400 bg-blue-500/20 border-blue-500/30' },
+  other: { label: 'Other Thought', icon: <HelpCircle className="w-3.5 h-3.5" />, color: 'text-zinc-400 bg-zinc-500/20 border-zinc-500/30' },
+};
 
 interface StudyBuddySyncModalProps {
   isOpen: boolean;
@@ -36,6 +51,8 @@ interface StudyBuddySyncModalProps {
   topic?: string;
   targetMinutes?: number;
   existingSession?: BuddySession | null;
+  isMinimized?: boolean;
+  onToggleMinimize?: (minimized: boolean) => void;
 }
 
 export function StudyBuddySyncModal({
@@ -47,25 +64,35 @@ export function StudyBuddySyncModal({
   topic = 'Deep Work Sprint',
   targetMinutes = 25,
   existingSession,
+  isMinimized: propIsMinimized,
+  onToggleMinimize,
 }: StudyBuddySyncModalProps) {
-  const { addThought, customQuickPings, endSession } = useStudyStore();
+  const { addThought, customQuickPings } = useStudyStore();
   const supabase = createClient();
 
   const [session, setSession] = useState<BuddySession | null>(existingSession || null);
   const [resolvedFriend, setResolvedFriend] = useState<ExtendedUserProfile | null>(propTargetFriend || null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [localMinimized, setLocalMinimized] = useState<boolean>(false);
+  const isMinimized = propIsMinimized ?? localMinimized;
+  const setMinimized = (min: boolean) => {
+    if (onToggleMinimize) onToggleMinimize(min);
+    else setLocalMinimized(min);
+  };
+
   const [highFivesCount, setHighFivesCount] = useState<number>(existingSession?.high_fives || 0);
   
-  // Real-time animation states
+  // Real-time animation & partner alerts
   const [showHighFiveBurst, setShowHighFiveBurst] = useState<boolean>(false);
-  const [partnerPingNotice, setPartnerPingNotice] = useState<string | null>(null);
+  const [partnerPingNotice, setPartnerPingNotice] = useState<{ name: string; title: string; category: ThoughtCategory; duration: number } | null>(null);
   const [myPingsCount, setMyPingsCount] = useState<number>(0);
   const [partnerPingsCount, setPartnerPingsCount] = useState<number>(0);
   
-  // Quick Mind Ping input
+  // Dedicated Mind Ping Logger Form
   const [isPingDrawerOpen, setIsPingDrawerOpen] = useState<boolean>(false);
+  const [selectedCategory, setSelectedCategory] = useState<ThoughtCategory>('phone_social');
+  const [pingMinutes, setPingMinutes] = useState<number>(2);
   const [customPingTitle, setCustomPingTitle] = useState<string>('');
 
   const duration = session?.duration_minutes || existingSession?.duration_minutes || targetMinutes;
@@ -73,11 +100,10 @@ export function StudyBuddySyncModal({
   const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
   const hasCompletedRef = useRef<boolean>(false);
 
-  // Initialize or fetch canonical session
+  // Initialize and resolve friend profile
   useEffect(() => {
     if (!isOpen) return;
 
-    // 1. Resolve friend profile if not passed directly
     if (!propTargetFriend && existingSession) {
       const otherUserId = existingSession.buddy_id === currentUser.id
         ? existingSession.initiator_id
@@ -103,7 +129,6 @@ export function StudyBuddySyncModal({
       setResolvedFriend(propTargetFriend);
     }
 
-    // 2. Set or start session with timestamp
     if (existingSession) {
       setSession(existingSession);
       setHighFivesCount(existingSession.high_fives || 0);
@@ -150,7 +175,6 @@ export function StudyBuddySyncModal({
       const exactSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1000));
       setElapsedSeconds(exactSeconds);
 
-      // Check sprint completion
       if (exactSeconds >= targetSeconds && !hasCompletedRef.current) {
         hasCompletedRef.current = true;
         playPomodoroCompleteChime();
@@ -163,7 +187,7 @@ export function StudyBuddySyncModal({
     return () => clearInterval(interval);
   }, [isOpen, session, isPaused, targetSeconds]);
 
-  // Realtime WebSocket Channel for Live High-Fives, Mind Pings, and Pause sync
+  // Realtime Broadcast Channel & Fast Polling
   useEffect(() => {
     if (!isOpen || !session) return;
 
@@ -172,9 +196,8 @@ export function StudyBuddySyncModal({
       config: { broadcast: { self: false } },
     });
 
-    // 1. Broadcast listener for instant high-fives and mind pings
     channel
-      .on('broadcast', { event: 'high_five' }, (payload) => {
+      .on('broadcast', { event: 'high_five' }, () => {
         setHighFivesCount((prev) => prev + 1);
         setShowHighFiveBurst(true);
         setTimeout(() => setShowHighFiveBurst(false), 2000);
@@ -182,15 +205,19 @@ export function StudyBuddySyncModal({
       .on('broadcast', { event: 'mind_ping' }, (payload) => {
         setPartnerPingsCount((prev) => prev + 1);
         const pName = resolvedFriend?.full_name?.split(' ')[0] || 'Your buddy';
-        setPartnerPingNotice(`${pName} logged a mind ping (${payload.payload?.category || 'thought'}) • Refocusing!`);
-        setTimeout(() => setPartnerPingNotice(null), 4000);
+        setPartnerPingNotice({
+          name: pName,
+          title: payload.payload?.title || 'Stray thought',
+          category: payload.payload?.category || 'other',
+          duration: payload.payload?.duration || 2,
+        });
+        setTimeout(() => setPartnerPingNotice(null), 5000);
       })
       .on('broadcast', { event: 'toggle_pause' }, (payload) => {
         setIsPaused(payload.payload?.isPaused ?? false);
       })
       .subscribe();
 
-    // 2. Fast Polling fallback for high-fives and session status across devices
     const pollInterval = setInterval(async () => {
       try {
         const { data } = await supabase
@@ -225,7 +252,6 @@ export function StudyBuddySyncModal({
     setShowHighFiveBurst(true);
     setTimeout(() => setShowHighFiveBurst(false), 2000);
 
-    // Broadcast to partner
     if (session) {
       const channelId = `buddy_realtime_${session.id}`;
       supabase.channel(channelId).send({
@@ -234,7 +260,6 @@ export function StudyBuddySyncModal({
         payload: { senderId: currentUser.id },
       });
 
-      // Update in Supabase
       try {
         await supabase
           .from('buddy_sessions')
@@ -246,26 +271,30 @@ export function StudyBuddySyncModal({
     }
   };
 
-  // Log Mind Ping inside buddy session
-  const handleLogMindPing = async (title: string, category: ThoughtCategory = 'other') => {
+  // Log Mind Ping with Category & Duration
+  const handleLogMindPing = async (title: string, category: ThoughtCategory, durationMins: number = 2) => {
     const newMyPings = myPingsCount + 1;
     setMyPingsCount(newMyPings);
     setIsPingDrawerOpen(false);
     setCustomPingTitle('');
 
-    // Save to global study store
-    addThought(title, category, 2);
+    // 1. Record thought in global store
+    addThought(title, category, durationMins);
 
-    // Broadcast to buddy
+    // 2. Broadcast to study buddy
     if (session) {
       const channelId = `buddy_realtime_${session.id}`;
       supabase.channel(channelId).send({
         type: 'broadcast',
         event: 'mind_ping',
-        payload: { category: category.replace('_', ' ') },
+        payload: { 
+          title, 
+          category,
+          duration: durationMins,
+        },
       });
 
-      // Update ping counter in Supabase
+      // 3. Update database ping counter
       const isInitiator = currentUser.id === session.initiator_id;
       try {
         await supabase
@@ -295,7 +324,7 @@ export function StudyBuddySyncModal({
     }
   };
 
-  // Complete and Finish Sprint
+  // Finish Sprint
   const handleFinishSprint = async () => {
     if (session) {
       try {
@@ -321,17 +350,19 @@ export function StudyBuddySyncModal({
   if (isMinimized) {
     return (
       <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-50 animate-slide-up">
-        <div className="p-3.5 rounded-2xl bg-zinc-900/95 border border-teal-500/50 shadow-[0_0_25px_rgba(20,184,166,0.3)] backdrop-blur-xl flex items-center gap-3">
+        <div className="p-3.5 rounded-2xl bg-zinc-900/95 border border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.35)] backdrop-blur-xl flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-teal-500/20 border border-teal-400 flex items-center justify-center text-teal-300 font-bold text-xs">
             {currentUserInitial}
           </div>
 
           <div className="text-left">
             <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-              <span className="font-mono text-teal-400">{formatSecondsToTimer(remainingSeconds)}</span>
+              <span className={`font-mono ${isPaused ? 'text-amber-400' : 'text-teal-400'}`}>
+                {formatSecondsToTimer(remainingSeconds)}
+              </span>
               <span className="text-[10px] text-zinc-400 font-normal">with {friendFirstName}</span>
             </div>
-            <span className="text-[10px] text-zinc-500 block truncate max-w-[120px]">{topic}</span>
+            <span className="text-[10px] text-zinc-500 block truncate max-w-[130px]">{topic}</span>
           </div>
 
           <button
@@ -343,7 +374,7 @@ export function StudyBuddySyncModal({
           </button>
 
           <button
-            onClick={() => setIsMinimized(false)}
+            onClick={() => setMinimized(false)}
             className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
             title="Expand Full View"
           >
@@ -374,9 +405,18 @@ export function StudyBuddySyncModal({
 
         {/* Partner Ping Notification Toast */}
         {partnerPingNotice && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 w-[90%] p-2.5 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-200 text-xs font-semibold flex items-center justify-center gap-2 animate-slide-up shadow-lg">
-            <Brain className="w-4 h-4 text-indigo-400" />
-            <span>{partnerPingNotice}</span>
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 w-[92%] p-3 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-100 text-xs font-semibold flex items-center justify-between gap-2 animate-slide-up shadow-xl backdrop-blur-md">
+            <div className="flex items-center gap-2 text-left">
+              <div className="p-1.5 rounded-lg bg-indigo-500/30 text-indigo-300">
+                <Brain className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-white">{partnerPingNotice.name}</span> caught a {partnerPingNotice.duration}m distraction ({CATEGORY_META[partnerPingNotice.category]?.label || 'Thought'}: &ldquo;{partnerPingNotice.title}&rdquo;)
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono whitespace-nowrap">
+              Refocusing!
+            </span>
           </div>
         )}
 
@@ -401,7 +441,7 @@ export function StudyBuddySyncModal({
 
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setIsMinimized(true)}
+              onClick={() => setMinimized(true)}
               className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               title="Minimize to Floating Pill"
             >
@@ -498,54 +538,109 @@ export function StudyBuddySyncModal({
           </div>
         </div>
 
-        {/* Mind Ping Quick Logger Drawer */}
+        {/* Mind Ping Quick Logger Drawer with Categories & Time */}
         {isPingDrawerOpen && (
-          <div className="mb-4 p-4 rounded-2xl bg-zinc-950/80 border border-purple-500/30 text-left animate-slide-up space-y-3">
+          <div className="mb-4 p-4 rounded-2xl bg-zinc-950/90 border border-purple-500/40 text-left animate-slide-up space-y-3.5 shadow-2xl">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                <Brain className="w-3.5 h-3.5" />
-                <span>Log Stray Thought (1-Tap Distraction Isolation)</span>
+                <Brain className="w-4 h-4 text-purple-400" />
+                <span>Log Distraction &amp; Isolate Stray Thought</span>
               </span>
               <button
                 onClick={() => setIsPingDrawerOpen(false)}
                 className="text-zinc-500 hover:text-zinc-300 text-xs"
               >
-                Cancel
+                Close
               </button>
             </div>
 
-            {/* Quick Ping Chips */}
-            <div className="flex flex-wrap gap-1.5">
-              {(customQuickPings || []).slice(0, 6).map((qp) => (
-                <button
-                  key={qp.id}
-                  onClick={() => handleLogMindPing(qp.title, qp.category)}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-purple-500/20 text-zinc-300 hover:text-purple-200 border border-zinc-800 hover:border-purple-500/40 text-[11px] font-medium transition-all active:scale-95"
-                >
-                  {qp.title}
-                </button>
-              ))}
+            {/* Category Selectors */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-zinc-400">1. Category of Distraction:</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {(Object.keys(CATEGORY_META) as ThoughtCategory[]).map((cat) => {
+                  const meta = CATEGORY_META[cat];
+                  const isSelected = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-medium flex items-center gap-1.5 transition-all ${
+                        isSelected 
+                          ? `${meta.color} font-bold ring-1 ring-white/20 shadow-md` 
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {meta.icon}
+                      <span className="truncate">{meta.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Time / Duration Chips */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-zinc-400">2. Approx Time Lost:</span>
+              <div className="flex items-center gap-1.5">
+                {[1, 2, 5, 10].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setPingMinutes(mins)}
+                    className={`px-3 py-1 rounded-lg text-xs font-mono font-bold border transition-all ${
+                      pingMinutes === mins 
+                        ? 'bg-purple-500 text-zinc-950 border-purple-400 shadow-sm' 
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                    }`}
+                  >
+                    {mins}m
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 1-Tap Quick Ping Suggestions */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-zinc-400">3. Quick 1-Tap Log:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(customQuickPings || []).slice(0, 5).map((qp) => (
+                  <button
+                    key={qp.id}
+                    type="button"
+                    onClick={() => handleLogMindPing(qp.title, qp.category, qp.minutes || 2)}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-purple-500/20 text-zinc-300 hover:text-purple-200 border border-zinc-800 hover:border-purple-500/40 text-[11px] font-medium transition-all active:scale-95"
+                  >
+                    {qp.title}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Custom ping input */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 border-t border-zinc-800/80">
               <input
                 type="text"
                 value={customPingTitle}
                 onChange={(e) => setCustomPingTitle(e.target.value)}
-                placeholder="Or type what distracted you..."
+                placeholder="Or describe stray thought..."
                 className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && customPingTitle.trim()) {
-                    handleLogMindPing(customPingTitle.trim(), 'other');
+                    handleLogMindPing(customPingTitle.trim(), selectedCategory, pingMinutes);
                   }
                 }}
               />
               <button
-                onClick={() => customPingTitle.trim() && handleLogMindPing(customPingTitle.trim(), 'other')}
-                className="p-1.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-zinc-950 font-bold transition-all active:scale-95"
+                onClick={() => {
+                  const titleToLog = customPingTitle.trim() || CATEGORY_META[selectedCategory].label;
+                  handleLogMindPing(titleToLog, selectedCategory, pingMinutes);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-zinc-950 font-bold text-xs transition-all active:scale-95 flex items-center gap-1"
               >
-                <Send className="w-3.5 h-3.5" />
+                <span>Log Ping</span>
+                <Send className="w-3 h-3" />
               </button>
             </div>
           </div>
@@ -570,7 +665,7 @@ export function StudyBuddySyncModal({
         {/* Bottom controls */}
         <div className="flex items-center justify-between gap-3 mt-5 pt-4 border-t border-zinc-800 text-xs">
           <button
-            onClick={() => setIsMinimized(true)}
+            onClick={() => setMinimized(true)}
             className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold transition-colors"
           >
             Minimize Sync View

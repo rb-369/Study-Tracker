@@ -467,25 +467,6 @@ export default function DashboardPage() {
         <SubjectManager onClose={() => setIsNewSubjectModalOpen(false)} />
       )}
 
-      {/* Incoming Buddy Invite (Distraction-Shield: Only visible when idle or in a Pomodoro break) */}
-      <IncomingBuddyInviteBanner
-        currentUser={user}
-        onAcceptInvite={(session) => {
-          setActiveBuddySession(session);
-        }}
-      />
-
-      {/* Synchronized 1-on-1 Buddy Session Modal */}
-      {activeBuddySession && (
-        <StudyBuddySyncModal
-          isOpen={!!activeBuddySession}
-          onClose={() => setActiveBuddySession(null)}
-          currentUser={user!}
-          targetFriend={activeBuddySession.buddy?.id === user?.id ? activeBuddySession.initiator : activeBuddySession.buddy}
-          existingSession={activeBuddySession}
-        />
-      )}
-
       {/* Mobile Bottom Navigation */}
       <MobileNav onOpenNewSession={() => setIsStartModalOpen(true)} />
     </div>

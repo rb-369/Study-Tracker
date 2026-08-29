@@ -551,24 +551,6 @@ export default function SocialHubPage() {
           </div>
         </div>
       )}
-      {/* Incoming Buddy Invite */}
-      <IncomingBuddyInviteBanner
-        currentUser={currentUser}
-        onAcceptInvite={(session) => {
-          setActiveBuddySession(session);
-        }}
-      />
-
-      {/* Synchronized 1-on-1 Buddy Session Modal */}
-      {activeBuddySession && (
-        <StudyBuddySyncModal
-          isOpen={!!activeBuddySession}
-          onClose={() => setActiveBuddySession(null)}
-          currentUser={currentUser}
-          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator : activeBuddySession.buddy}
-          existingSession={activeBuddySession}
-        />
-      )}
     </main>
   );
 }

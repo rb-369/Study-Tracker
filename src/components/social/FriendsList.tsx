@@ -19,22 +19,22 @@ import {
 import { ExtendedUserProfile, Friendship, FriendRequest } from '@/types/social';
 import { createClient } from '@/lib/supabase/client';
 import { checkRateLimit, registerAction, blockUser } from '@/lib/moderation/moderationService';
-import { StudyBuddySyncModal } from './StudyBuddySyncModal';
 import { StudyBuddyInviteModal } from './StudyBuddyInviteModal';
 import { BuddySession } from '@/types/social';
+import { useStudyStore } from '@/lib/store/useStudyStore';
 
 interface FriendsListProps {
   currentUser: ExtendedUserProfile;
 }
 
 export function FriendsList({ currentUser }: FriendsListProps) {
+  const { setActiveBuddySession, setIsBuddySyncMinimized } = useStudyStore();
   const [friends, setFriends] = useState<ExtendedUserProfile[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [addStatus, setAddStatus] = useState<{ text: string; success: boolean } | null>(null);
   const [invitingFriend, setInvitingFriend] = useState<ExtendedUserProfile | null>(null);
-  const [activeBuddySession, setActiveBuddySession] = useState<BuddySession | null>(null);
   const [highFiveToast, setHighFiveToast] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -398,19 +398,9 @@ export function FriendsList({ currentUser }: FriendsListProps) {
           targetFriend={invitingFriend}
           onStartSynchronizedSession={(session) => {
             setInvitingFriend(null);
+            setIsBuddySyncMinimized(false);
             setActiveBuddySession(session);
           }}
-        />
-      )}
-
-      {/* Active Synchronized 1-on-1 Study Buddy Pairing Modal */}
-      {activeBuddySession && (
-        <StudyBuddySyncModal
-          isOpen={!!activeBuddySession}
-          onClose={() => setActiveBuddySession(null)}
-          currentUser={currentUser}
-          targetFriend={activeBuddySession.buddy?.id === currentUser.id ? activeBuddySession.initiator : activeBuddySession.buddy}
-          existingSession={activeBuddySession}
         />
       )}
     </div>
