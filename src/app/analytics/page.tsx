@@ -15,6 +15,7 @@ import {
   Share2,
   Check,
   Calendar,
+  RotateCcw,
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -34,7 +35,18 @@ import { AnalyticsTimeframe } from "@/types";
 
 export default function AnalyticsPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, sessions, subjects } = useStudyStore();
+  const { 
+    user, 
+    isAuthenticated, 
+    isLoading, 
+    sessions, 
+    subjects,
+    resetDemoToBlank,
+    loadDemoSeedData 
+  } = useStudyStore();
+
+  const isDemoUser = !!user && (user.id.startsWith("guest-") || user.id.startsWith("demo-") || user.id === "guest-user");
+
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>("7d");
   const [copiedSummary, setCopiedSummary] = useState(false);
@@ -150,6 +162,17 @@ export default function AnalyticsPage() {
                 <span>Export CSV</span>
               </button>
 
+              {isDemoUser && hasSessions && (
+                <button
+                  onClick={() => resetDemoToBlank()}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-rose-500/15 border border-zinc-800 hover:border-rose-500/30 text-xs font-medium text-zinc-400 hover:text-rose-300 transition-colors flex items-center gap-1.5"
+                  title="Reset demo telemetry to blank"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Blank</span>
+                </button>
+              )}
+
               <button
                 onClick={() => setIsStartModalOpen(true)}
                 className="px-3.5 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm"
@@ -172,13 +195,22 @@ export default function AnalyticsPage() {
               <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
                 As soon as you complete study sessions and log in-session mind pings, your Focus Ratio trends, distraction root causes, flow state distributions, and circadian heatmaps will automatically appear here.
               </p>
-              <div className="flex items-center justify-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 {timeframe !== "all" && (
                   <button
                     onClick={() => setTimeframe("all")}
                     className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-all"
                   >
                     View All Time
+                  </button>
+                )}
+                {isDemoUser && (
+                  <button
+                    onClick={() => loadDemoSeedData()}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Load Sample Telemetry</span>
                   </button>
                 )}
                 <button

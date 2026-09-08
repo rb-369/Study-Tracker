@@ -14,7 +14,8 @@ import {
   BookOpen,
   ArrowRight,
   TrendingUp,
-  Target
+  Target,
+  RotateCcw
 } from "lucide-react";
 import Link from "next/link";
 import { useStudyStore } from "@/lib/store/useStudyStore";
@@ -34,7 +35,21 @@ import { BuddySession } from "@/types/social";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, activeSession, sessions, subjects, goals, createSubject, startSession } = useStudyStore();
+  const { 
+    user, 
+    isAuthenticated, 
+    isLoading, 
+    activeSession, 
+    sessions, 
+    subjects, 
+    goals, 
+    createSubject, 
+    startSession,
+    resetDemoToBlank,
+    loadDemoSeedData 
+  } = useStudyStore();
+
+  const isDemoUser = !!user && (user.id.startsWith("guest-") || user.id.startsWith("demo-") || user.id === "guest-user");
 
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
@@ -118,6 +133,51 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
+
+          {/* Guest Demo Showcase Ribbon */}
+          {isDemoUser && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-[#121216] to-indigo-950/40 border border-emerald-500/25 flex flex-wrap items-center justify-between gap-3 shadow-lg animate-fade-in">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-300">Guest Demo Showcase Mode</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                      {sessions.length} sessions &bull; {subjects.length} subjects
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    {sessions.length > 0
+                      ? "Exploring realistic student telemetry across 3 subjects, circadian heatmaps & AI debriefs."
+                      : "Blank workspace active. You can start fresh or reload sample telemetry anytime."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {sessions.length > 0 ? (
+                  <button
+                    onClick={() => resetDemoToBlank()}
+                    className="px-3.5 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-rose-500/15 border border-zinc-700/80 hover:border-rose-500/40 text-zinc-300 hover:text-rose-300 text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95"
+                    title="Clear sample data and start with an empty workspace"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset to Blank</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => loadDemoSeedData()}
+                    className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1.5 active:scale-95"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 fill-zinc-950" />
+                    <span>Load Sample Telemetry</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Laptop / Desktop Grid Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

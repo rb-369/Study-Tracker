@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { Subject, StudySession, Thought, ThoughtCategory, UserProfile, AIDebrief, SessionType, ExamGoal, ActiveTimerState, BreakType, BreakState, CustomQuickPing } from "@/types";
 import { BuddySession } from "@/types/social";
-import { INITIAL_SUBJECTS, INITIAL_SESSIONS, INITIAL_GOALS } from "./seedData";
+import { INITIAL_SUBJECTS, INITIAL_SESSIONS, INITIAL_GOALS, generateRealisticDemoData } from "./seedData";
 import { calculateFocusScore } from "@/lib/analytics/metrics";
 import { createClient } from "@/lib/supabase/client";
 import { generateUUID, formatSecondsToTimer } from "@/lib/utils";
@@ -64,6 +64,8 @@ interface StudyContextType {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
   signInAsDemoUser: () => void;
+  resetDemoToBlank: () => void;
+  loadDemoSeedData: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -1043,17 +1045,57 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       target_daily_minutes: 120,
       created_at: new Date().toISOString(),
     };
+    const demoData = generateRealisticDemoData(demoUser.id);
     setUser(demoUser);
     setIsAuthenticated(true);
+    setSubjects(demoData.subjects);
+    setGoals(demoData.goals);
+    setSessions(demoData.sessions);
+    localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(demoUser));
+    localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(demoData.subjects));
+    localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(demoData.goals));
+    localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(demoData.sessions));
+    document.cookie = "studyflow_demo_user=true; path=/; max-age=604800";
+    restoreActiveSessionFromStorage();
+  };
+
+  const resetDemoToBlank = () => {
+    setActiveSession(null);
+    setActiveTimer({
+      type: "stopwatch",
+      targetMinutes: 25,
+      elapsedSeconds: 0,
+      isRunning: false,
+      isInitialReady: false,
+      startTime: null,
+      lastStartedAt: null,
+      accumulatedSeconds: 0,
+      pomodoroCyclesCompleted: 0,
+      totalStudySeconds: 0,
+      totalBreakSeconds: 0,
+      breakState: undefined,
+    });
+    hasAlertedCompletionRef.current = false;
+    hasAlertedBreakCompletionRef.current = false;
+    resetTabTitle();
     setSubjects([]);
     setGoals([]);
     setSessions([]);
-    localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(demoUser));
+    localStorage.removeItem(LOCAL_STORAGE_KEY_ACTIVE);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_TIMER);
     localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify([]));
     localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify([]));
     localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify([]));
-    document.cookie = "studyflow_demo_user=true; path=/; max-age=604800";
-    restoreActiveSessionFromStorage();
+  };
+
+  const loadDemoSeedData = () => {
+    const demoData = generateRealisticDemoData(user?.id || "guest-user");
+    setSubjects(demoData.subjects);
+    setGoals(demoData.goals);
+    setSessions(demoData.sessions);
+    localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(demoData.subjects));
+    localStorage.setItem(LOCAL_STORAGE_KEY_GOALS, JSON.stringify(demoData.goals));
+    localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(demoData.sessions));
   };
 
   const signOut = async () => {
@@ -1961,6 +2003,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         signInWithEmail,
         signUpWithEmail,
         signInAsDemoUser,
+        resetDemoToBlank,
+        loadDemoSeedData,
         signOut,
       }}
     >

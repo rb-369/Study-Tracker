@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Target,
   Bell,
-  Volume2
+  Volume2,
+  RotateCcw
 } from "lucide-react";
 import { useStudyStore } from "@/lib/store/useStudyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -25,7 +26,18 @@ import { playPomodoroCompleteChime, requestNotificationPermission, sendStudyNoti
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, signOut, updateUserProfile } = useStudyStore();
+  const { 
+    user, 
+    isAuthenticated, 
+    isLoading, 
+    signOut, 
+    updateUserProfile,
+    resetDemoToBlank,
+    loadDemoSeedData 
+  } = useStudyStore();
+
+  const isDemoUser = !!user && (user.id.startsWith("guest-") || user.id.startsWith("demo-") || user.id === "guest-user");
+
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   const [dailyTargetMins, setDailyTargetMins] = useState<number | string>(user?.target_daily_minutes || 180);
@@ -121,11 +133,52 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-400 font-mono">{user?.email || "Local Demo User"}</p>
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[11px] font-medium">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>{user?.id.startsWith("demo-") ? "Guest Demo Mode" : "Authenticated with Google"}</span>
+                  <span>{isDemoUser ? "Guest Demo Mode" : "Authenticated Account"}</span>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Demo Showcase Management */}
+          {isDemoUser && (
+            <div className="p-6 rounded-2xl glass-card border border-emerald-500/30 space-y-4 bg-emerald-950/10 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Guest Demo Showcase Controls</span>
+                </h3>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  Demo Mode
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                You are running StudyFlow in local guest showcase mode. You can instantly reset your workspace to blank to test clean onboarding, or reload the realistic 14-session sample telemetry across Physics, Calculus, and Chemistry.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => resetDemoToBlank()}
+                  className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-rose-500/20 border border-zinc-800 hover:border-rose-500/30 text-xs font-semibold text-zinc-300 hover:text-rose-300 flex items-center gap-2 transition-all active:scale-95"
+                  title="Clear all sample data and start with a completely blank workspace"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Blank Workspace</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => loadDemoSeedData()}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-zinc-950 flex items-center gap-2 transition-all active:scale-95 shadow-md shadow-emerald-500/20"
+                  title="Reload 14 realistic completed study sessions across 3 subjects"
+                >
+                  <Sparkles className="w-3.5 h-3.5 fill-zinc-950" />
+                  <span>Reload 14-Session Sample Telemetry</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 2. Daily Goal Preference */}
           <div className="p-6 rounded-2xl glass-card border border-border space-y-4">
